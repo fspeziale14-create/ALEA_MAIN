@@ -71,7 +71,7 @@ function App() {
     const baseValue = value * toBase[fromUnit];
     return baseValue / toBase[toUnit];
   };
-  const isPieceUnit = (u: string) => u === 'pz';
+  const isPieceUnit = (u: string) => u === 'pz' || u === 'conf';
   const isMeasuredUnit = (u: string) => ['g', 'kg', 'ml', 'l', 'cl'].includes(u);
 
   // ====== AUTH & RUOLO ======
