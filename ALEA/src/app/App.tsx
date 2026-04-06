@@ -2230,6 +2230,7 @@ function App() {
               ingredients={ingredients}
               setIngredients={setIngredients}
               recipes={recipes}
+              preparations={preparations}
               isDinner={isDinner}
             />
           )}
