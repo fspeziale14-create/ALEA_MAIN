@@ -7,8 +7,9 @@ import { useState, useRef, useCallback } from 'react';
 import {
   TrendingUp, TrendingDown, Upload, AlertCircle, ChevronDown,
   ChevronUp, BarChart2, Pencil, Check, X, Info, Filter,
-  ArrowUpDown, PiggyBank, Package, Percent, Euro
+  ArrowUpDown, PiggyBank, Package, Percent, Euro, Zap, Target, Eye, RefreshCw
 } from 'lucide-react';
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, Cell } from 'recharts';
 import { MENU_CATEGORIES, MENU_PRICES } from '../constants';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -212,11 +213,14 @@ export function MenuProfitability({
   const dividerCls = isDinner ? 'border-[#334155]'      : 'border-[#EAE5DA]';
 
   // ── STATE ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'margini' | 'ranking'>('margini');
+  const [activeTab, setActiveTab] = useState<'margini' | 'portfolio' | 'ingredienti' | 'frequenze'>('margini');
   const [categoryFilter, setCategoryFilter] = useState<string>('Tutte');
   const [sortKey, setSortKey] = useState<SortKey>('marginPct');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
+  const [hoveredBubble, setHoveredBubble] = useState<string | null>(null);
+  // Simulazione riduzione quantità ingrediente (tab ingredienti)
+  const [simReductions, setSimReductions] = useState<Record<string, number>>({}); // ingId -> % riduzione (10 o 20)
 
   // Prezzi manuali ingredienti (editing inline)
   const [editingIngId, setEditingIngId] = useState<string | null>(null);
@@ -662,6 +666,145 @@ export function MenuProfitability({
 
   const maxScore = rankingDishes[0]?.score ?? 1;
 
+  // ── QUADRANTI PORTFOLIO ───────────────────────────────────────
+  // Solo piatti con frequenza E margine calcolato
+  const portfolioDishes = allDishes.filter(d => d.frequency != null && !d.hasMissingCosts);
+  const medianFreq = (() => {
+    const sorted = [...portfolioDishes].sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0));
+    if (sorted.length === 0) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? ((sorted[mid-1].frequency! + sorted[mid].frequency!) / 2) : sorted[mid].frequency!;
+  })();
+  const medianMargin = (() => {
+    const sorted = [...portfolioDishes].sort((a, b) => a.marginPct - b.marginPct);
+    if (sorted.length === 0) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? ((sorted[mid-1].marginPct + sorted[mid].marginPct) / 2) : sorted[mid].marginPct;
+  })();
+
+  const getQuadrant = (d: DishMargin): 'stelle' | 'spingere' | 'rivedere' | 'valutare' => {
+    const hiFreq = (d.frequency ?? 0) >= medianFreq;
+    const hiMargin = d.marginPct >= medianMargin;
+    if (hiFreq && hiMargin) return 'stelle';
+    if (!hiFreq && hiMargin) return 'spingere';
+    if (hiFreq && !hiMargin) return 'rivedere';
+    return 'valutare';
+  };
+
+  const quadrantMeta = {
+    stelle:   { label: 'Stelle',           color: 'text-emerald-500', bg: isDinner ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200', desc: 'Alto margine, alta frequenza — da tenere così', icon: '⭐' },
+    spingere: { label: 'Da promuovere',    color: 'text-blue-500',    bg: isDinner ? 'bg-blue-500/10 border-blue-500/30'       : 'bg-blue-50 border-blue-200',       desc: 'Alto margine, poca visibilità — da comunicare di più', icon: '📣' },
+    rivedere: { label: 'Da rivedere',      color: 'text-amber-500',   bg: isDinner ? 'bg-amber-500/10 border-amber-500/30'     : 'bg-amber-50 border-amber-200',     desc: 'Molto venduto ma margine basso — porzioni o costi', icon: '🔧' },
+    valutare: { label: 'Da valutare',      color: 'text-rose-500',    bg: isDinner ? 'bg-rose-500/10 border-rose-500/30'       : 'bg-rose-50 border-rose-200',       desc: 'Basso margine e poche vendite — considerare revisione', icon: '❓' },
+  };
+
+  // Dati per grafico a bolle
+  const bubbleData = portfolioDishes.map(d => ({
+    name: d.name,
+    x: d.frequency ?? 0,
+    y: Math.round(d.marginPct * 10) / 10,
+    z: Math.max(d.score ?? 1, 1),
+    quadrant: getQuadrant(d),
+    marginNet: d.marginNet,
+    ingredientCost: d.ingredientCost,
+  }));
+
+  const bubbleColors: Record<string, string> = {
+    stelle: '#10b981', spingere: '#3b82f6', rivedere: '#f59e0b', valutare: '#ef4444'
+  };
+
+  // ── ANALISI INGREDIENTI (piatti "da rivedere") ────────────────
+  const rivisitaDishes = portfolioDishes.filter(d => getQuadrant(d) === 'rivedere');
+
+  // Per ogni piatto da rivedere, calcola il peso % di ogni ingrediente sul food cost
+  const getIngBreakdown = (dishName: string) => {
+    const rows = recipes[dishName] || [];
+    const result: Array<{
+      id: string; name: string; unit: string;
+      costRow: number; pct: number; qty: number; rowUnit: string;
+      isPrep: boolean;
+    }> = [];
+    let total = 0;
+    rows.forEach(row => {
+      const isPrep = row.ingredientId.startsWith('prep:');
+      const prep = isPrep ? preparations.find(p => p.id === row.ingredientId.replace('prep:', '')) : null;
+      const ing = !isPrep ? ingredients.find(i => i.id === row.ingredientId) : null;
+      if (!ing && !prep) return;
+      const ppu = isPrep ? null : calcWAC(ing!);
+      const effectivePpp = row.portionsPerPiece ?? row.pcs_yield;
+      let cost = 0;
+      if (isPrep && prep) {
+        let pc = 0; let pm = false;
+        prep.ingredients.forEach(pr => {
+          const pi = ingredients.find(i => i.id === pr.ingredientId);
+          if (!pi) { pm = true; return; }
+          const ppu2 = calcWAC(pi); if (!ppu2) { pm = true; return; }
+          if (pr.portionsPerPiece && pr.portionsPerPiece > 0) pc += ppu2 / pr.portionsPerPiece;
+          else pc += ppu2 * toBaseQty(pr.qty, pr.unit ?? pi.unit, pi.unit);
+        });
+        if (!pm) {
+          const cpyu = pc / prep.yieldQty;
+          if (effectivePpp && effectivePpp > 0) cost = cpyu / effectivePpp;
+          else cost = cpyu * toBaseQty(row.qty, row.unit ?? prep.yieldUnit, prep.yieldUnit);
+        }
+      } else if (ppu != null) {
+        if (effectivePpp && effectivePpp > 0) cost = ppu / effectivePpp;
+        else cost = ppu * toBaseQty(row.qty, row.unit ?? ing!.unit, ing!.unit);
+      }
+      total += cost;
+      result.push({
+        id: isPrep ? row.ingredientId : ing!.id,
+        name: isPrep ? prep!.name : ing!.name,
+        unit: isPrep ? prep!.yieldUnit : ing!.unit,
+        costRow: cost,
+        pct: 0,
+        qty: row.qty,
+        rowUnit: row.unit ?? (isPrep ? prep!.yieldUnit : ing!.unit),
+        isPrep,
+      });
+    });
+    return result.map(r => ({ ...r, pct: total > 0 ? (r.costRow / total) * 100 : 0 }))
+                 .sort((a, b) => b.costRow - a.costRow);
+  };
+
+  // Calcola risparmio simulato per riduzione quantità
+  const simCost = (dishName: string, ingId: string, reduction: number): number => {
+    const dish = allDishes.find(d => d.name === dishName);
+    if (!dish) return 0;
+    const rows = recipes[dishName] || [];
+    let total = 0;
+    rows.forEach(row => {
+      const isPrep = row.ingredientId.startsWith('prep:');
+      const prep = isPrep ? preparations.find(p => p.id === row.ingredientId.replace('prep:', '')) : null;
+      const ing = !isPrep ? ingredients.find(i => i.id === row.ingredientId) : null;
+      if (!ing && !prep) return;
+      const ppu = isPrep ? null : calcWAC(ing!);
+      const effectivePpp = row.portionsPerPiece ?? row.pcs_yield;
+      const mult = row.ingredientId === ingId ? (1 - reduction / 100) : 1;
+      let cost = 0;
+      if (isPrep && prep) {
+        let pc = 0; let pm = false;
+        prep.ingredients.forEach(pr => {
+          const pi = ingredients.find(i => i.id === pr.ingredientId);
+          if (!pi) { pm = true; return; }
+          const ppu2 = calcWAC(pi); if (!ppu2) { pm = true; return; }
+          if (pr.portionsPerPiece && pr.portionsPerPiece > 0) pc += ppu2 / pr.portionsPerPiece;
+          else pc += ppu2 * toBaseQty(pr.qty, pr.unit ?? pi.unit, pi.unit);
+        });
+        if (!pm) {
+          const cpyu = pc / prep.yieldQty;
+          if (effectivePpp && effectivePpp > 0) cost = (cpyu / effectivePpp) * mult;
+          else cost = cpyu * toBaseQty(row.qty, row.unit ?? prep.yieldUnit, prep.yieldUnit) * mult;
+        }
+      } else if (ppu != null) {
+        if (effectivePpp && effectivePpp > 0) cost = (ppu / effectivePpp) * mult;
+        else cost = ppu * toBaseQty(row.qty, row.unit ?? ing!.unit, ing!.unit) * mult;
+      }
+      total += cost;
+    });
+    return total;
+  };
+
   // ================================================================
   // RENDER
   // ================================================================
@@ -700,10 +843,12 @@ export function MenuProfitability({
       </div>
 
       {/* TAB SELECTOR */}
-      <div className={`flex gap-1 p-1 rounded-xl border mb-6 w-fit ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
+      <div className={`flex flex-wrap gap-1 p-1 rounded-xl border mb-6 w-fit ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
         {[
-          { key: 'margini',  label: 'Analisi Margini', icon: BarChart2 },
-          { key: 'ranking',  label: 'Frequenze & Ranking', icon: TrendingUp },
+          { key: 'margini',     label: 'Analisi Margini',  icon: BarChart2 },
+          { key: 'portfolio',   label: 'Portfolio',         icon: Target },
+          { key: 'ingredienti', label: 'Ingredienti',       icon: Package },
+          { key: 'frequenze',   label: 'Frequenze',         icon: TrendingUp },
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -725,36 +870,27 @@ export function MenuProfitability({
       ============================================================ */}
       {activeTab === 'margini' && (
         <div className="space-y-4">
-          {/* Filtri */}
           <div className="flex flex-wrap items-center gap-2">
             <Filter className={`w-4 h-4 ${mutedText}`} />
             {([
-              { key: 'Tutte',                    label: 'Tutte' },
-              { key: 'APPETIZERS',               label: 'Appetizers' },
-              { key: 'PASTA',                    label: 'Pasta' },
-              { key: 'INSALATE',                 label: 'Insalate' },
-              { key: 'SANDWICH DELLA BAIA',      label: 'Sandwich' },
-              { key: 'GLI SPECIAL DEL GOLFO',    label: 'Special del Golfo' },
-              { key: 'MAINS',                    label: 'Mains' },
-              { key: 'SHARING & KIDS MENU',      label: 'Sharing & Kids' },
-              { key: 'DOLCI & GELATO',           label: 'Dolci & Gelato' },
-              { key: 'COCKTAILS & BEVERAGE',     label: 'Cocktails' },
+              { key: 'Tutte', label: 'Tutte' },
+              { key: 'APPETIZERS', label: 'Appetizers' },
+              { key: 'PASTA', label: 'Pasta' },
+              { key: 'INSALATE', label: 'Insalate' },
+              { key: 'SANDWICH DELLA BAIA', label: 'Sandwich' },
+              { key: 'GLI SPECIAL DEL GOLFO', label: 'Special del Golfo' },
+              { key: 'MAINS', label: 'Mains' },
+              { key: 'SHARING & KIDS MENU', label: 'Sharing & Kids' },
+              { key: 'DOLCI & GELATO', label: 'Dolci & Gelato' },
+              { key: 'COCKTAILS & BEVERAGE', label: 'Cocktails' },
             ] as { key: string; label: string }[]).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setCategoryFilter(key)}
+              <button key={key} onClick={() => setCategoryFilter(key)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  categoryFilter === key
-                    ? 'bg-[#967D62] text-white border-[#967D62]'
+                  categoryFilter === key ? 'bg-[#967D62] text-white border-[#967D62]'
                     : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]')
-                }`}
-              >
-                {label}
-              </button>
+                }`}>{label}</button>
             ))}
           </div>
-
-          {/* Info costi mancanti */}
           {missingCount > 0 && (
             <div className={`flex items-start gap-3 p-3 rounded-lg border ${isDinner ? 'bg-amber-950/20 border-amber-800/40' : 'bg-amber-50 border-amber-200'}`}>
               <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
@@ -764,41 +900,254 @@ export function MenuProfitability({
               </p>
             </div>
           )}
-
-          {/* Tabella */}
           <Card className={cardBg}>
-            {/* Header colonne */}
             <div className={`flex items-center gap-3 px-4 py-2.5 border-b ${dividerCls} ${isDinner ? 'bg-[#0F172A]/40' : 'bg-[#F4F1EA]/40'} rounded-t-xl`}>
               <div className="flex-1"><SortBtn k="name" label="Piatto" /></div>
               <div className="hidden sm:block w-20 text-right"><span className={`text-xs font-semibold uppercase tracking-wider ${mutedText}`}>Netto €</span></div>
               <div className="hidden md:block w-20 text-right"><span className={`text-xs font-semibold uppercase tracking-wider ${mutedText}`}>Costo ing.</span></div>
               <div className="w-16 text-right"><SortBtn k="foodCostPct" label="FC%" /></div>
               <div className="w-20 text-right"><SortBtn k="marginPct" label="Margine" /></div>
-              {Object.keys(frequencies).length > 0 && (
-                <div className="hidden lg:block w-16 text-right"><SortBtn k="frequency" label="Freq." /></div>
-              )}
-              {Object.keys(frequencies).length > 0 && (
-                <div className="hidden lg:block w-20 text-right"><SortBtn k="score" label="Score" /></div>
-              )}
+              {Object.keys(frequencies).length > 0 && <div className="hidden lg:block w-16 text-right"><SortBtn k="frequency" label="Freq." /></div>}
+              {Object.keys(frequencies).length > 0 && <div className="hidden lg:block w-20 text-right"><SortBtn k="score" label="Score" /></div>}
               <div className="w-5" />
             </div>
             <div>
-              {sorted.length === 0 ? (
-                <div className={`p-12 text-center ${mutedText}`}>Nessun piatto per questa categoria.</div>
-              ) : (
-                sorted.map(renderDishRow)
-              )}
+              {sorted.length === 0
+                ? <div className={`p-12 text-center ${mutedText}`}>Nessun piatto per questa categoria.</div>
+                : sorted.map(renderDishRow)}
             </div>
           </Card>
         </div>
       )}
 
       {/* ============================================================
-          TAB 2 — FREQUENZE & RANKING
+          TAB 2 — PORTFOLIO (Grafico a bolle + Quadranti)
       ============================================================ */}
-      {activeTab === 'ranking' && (
+      {activeTab === 'portfolio' && (
         <div className="space-y-6">
-          {/* Import frequenze */}
+          {portfolioDishes.length < 3 ? (
+            <div className={`flex flex-col items-center justify-center py-16 ${mutedText}`}>
+              <Target className="w-12 h-12 mb-3 opacity-20" />
+              <p className="text-sm font-medium">Importa le frequenze per vedere il portfolio</p>
+              <p className="text-xs mt-1 opacity-70">Serve almeno la frequenza di vendita e i costi degli ingredienti</p>
+            </div>
+          ) : (
+            <>
+              {/* Grafico a bolle */}
+              <Card className={cardBg}>
+                <CardHeader className="pb-2">
+                  <CardTitle className={`text-base ${textColor}`}>Portfolio piatti</CardTitle>
+                  <p className={`text-xs ${mutedText}`}>
+                    Asse X = frequenza vendita · Asse Y = margine netto % · Dimensione bolla = contributo totale al risultato
+                    {medianFreq > 0 && <span className="ml-2">· Soglie: freq. mediana {medianFreq.toFixed(0)} · margine mediano {medianMargin.toFixed(1)}%</span>}
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[380px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDinner ? '#334155' : '#EAE5DA'} />
+                        <XAxis
+                          dataKey="x" type="number" name="Frequenza"
+                          label={{ value: 'Frequenza ordini', position: 'insideBottom', offset: -10, fill: isDinner ? '#94A3B8' : '#8C8A85', fontSize: 11 }}
+                          tick={{ fill: isDinner ? '#94A3B8' : '#8C8A85', fontSize: 11 }}
+                        />
+                        <YAxis
+                          dataKey="y" type="number" name="Margine %"
+                          label={{ value: 'Margine %', angle: -90, position: 'insideLeft', offset: 15, fill: isDinner ? '#94A3B8' : '#8C8A85', fontSize: 11 }}
+                          tick={{ fill: isDinner ? '#94A3B8' : '#8C8A85', fontSize: 11 }}
+                        />
+                        <ZAxis dataKey="z" range={[40, 400]} />
+                        {/* Linee soglia */}
+                        <line x1="0%" x2="100%" y1={`${100 - ((medianMargin - 0) / 100) * 100}%`} y2={`${100 - ((medianMargin - 0) / 100) * 100}%`} stroke="#967D62" strokeDasharray="4 4" strokeOpacity={0.4} />
+                        <Tooltip
+                          cursor={{ strokeDasharray: '3 3' }}
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0].payload;
+                            const meta = quadrantMeta[d.quadrant as keyof typeof quadrantMeta];
+                            return (
+                              <div className={`p-3 rounded-xl border shadow-lg text-xs ${isDinner ? 'bg-[#1E293B] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}>
+                                <p className="font-bold text-sm mb-1">{d.name}</p>
+                                <p className={meta.color}>{meta.icon} {meta.label}</p>
+                                <p className={mutedText}>Margine: <span className={textColor}>{d.y}%</span></p>
+                                <p className={mutedText}>Frequenza: <span className={textColor}>{d.x}</span></p>
+                                <p className={mutedText}>Score: <span className="text-[#967D62] font-bold">{d.z.toFixed(0)}</span></p>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Scatter data={bubbleData} isAnimationActive={false}>
+                          {bubbleData.map((entry, index) => (
+                            <Cell key={index} fill={bubbleColors[entry.quadrant]} fillOpacity={0.75} stroke={bubbleColors[entry.quadrant]} strokeWidth={1} />
+                          ))}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {/* Legenda */}
+                  <div className="flex flex-wrap gap-3 mt-2 justify-center">
+                    {(Object.entries(quadrantMeta) as [string, typeof quadrantMeta.stelle][]).map(([k, m]) => (
+                      <div key={k} className="flex items-center gap-1.5 text-xs">
+                        <div className="w-3 h-3 rounded-full" style={{ background: bubbleColors[k] }} />
+                        <span className={mutedText}>{m.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Quattro quadranti */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(['stelle', 'spingere', 'rivedere', 'valutare'] as const).map(q => {
+                  const meta = quadrantMeta[q];
+                  const dishes = portfolioDishes.filter(d => getQuadrant(d) === q).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+                  return (
+                    <Card key={q} className={`border ${meta.bg}`}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className={`text-sm ${meta.color}`}>{meta.icon} {meta.label}</CardTitle>
+                        <p className={`text-xs ${mutedText}`}>{meta.desc}</p>
+                      </CardHeader>
+                      <CardContent>
+                        {dishes.length === 0 ? (
+                          <p className={`text-xs italic ${mutedText}`}>Nessun piatto in questo quadrante</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {dishes.map(d => (
+                              <div key={d.name} className={`flex items-center justify-between text-xs px-2 py-1.5 rounded-lg ${isDinner ? 'bg-black/20' : 'bg-white/60'}`}>
+                                <span className={`font-medium truncate ${textColor}`}>{d.name}</span>
+                                <div className="flex items-center gap-3 shrink-0 ml-2">
+                                  <span className={mutedText}>{d.marginPct.toFixed(1)}%</span>
+                                  <span className={mutedText}>{d.frequency} ord.</span>
+                                  {d.score != null && <span className="text-[#967D62] font-bold">{d.score.toFixed(0)}</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ============================================================
+          TAB 3 — INGREDIENTI (analisi piatti da rivedere)
+      ============================================================ */}
+      {activeTab === 'ingredienti' && (
+        <div className="space-y-6">
+          {rivisitaDishes.length === 0 ? (
+            <div className={`flex flex-col items-center justify-center py-16 ${mutedText}`}>
+              <Package className="w-12 h-12 mb-3 opacity-20" />
+              <p className="text-sm font-medium">
+                {portfolioDishes.length === 0
+                  ? 'Importa le frequenze nella tab Frequenze per abilitare questa analisi'
+                  : 'Nessun piatto nel quadrante "Da rivedere" — ottimo!'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className={`flex items-start gap-3 p-4 rounded-xl border ${isDinner ? 'bg-[#967D62]/10 border-[#967D62]/30' : 'bg-[#967D62]/5 border-[#967D62]/20'}`}>
+                <RefreshCw className="w-4 h-4 text-[#967D62] shrink-0 mt-0.5" />
+                <p className={`text-sm ${textColor}`}>
+                  Questi piatti sono <strong>molto venduti ma con margine basso</strong>. Per ognuno vedi quali ingredienti pesano di più sul costo, e simula cosa cambierebbe riducendo la quantità del <strong>10% o 20%</strong>.
+                </p>
+              </div>
+              {rivisitaDishes.map(dish => {
+                const breakdown = getIngBreakdown(dish.name);
+                if (breakdown.length === 0) return null;
+                return (
+                  <Card key={dish.name} className={cardBg}>
+                    <CardHeader className="pb-3 border-b border-black/5 dark:border-white/5">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className={`text-base ${textColor}`}>{dish.name}</CardTitle>
+                          <p className={`text-xs ${mutedText} mt-0.5`}>{dish.category}</p>
+                        </div>
+                        <div className="text-right shrink-0 ml-4">
+                          <div className={`text-xs ${mutedText}`}>Margine attuale</div>
+                          <div className="text-amber-500 font-bold text-lg">{dish.marginPct.toFixed(1)}%</div>
+                          <div className={`text-xs ${mutedText}`}>Food cost €{dish.ingredientCost.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-4 space-y-3">
+                      {breakdown.map(row => {
+                        const sim10 = simCost(dish.name, row.id, 10);
+                        const sim20 = simCost(dish.name, row.id, 20);
+                        const newMargin10 = dish.priceNet > 0 ? ((dish.priceNet - sim10) / dish.priceNet) * 100 : 0;
+                        const newMargin20 = dish.priceNet > 0 ? ((dish.priceNet - sim20) / dish.priceNet) * 100 : 0;
+                        const saving10 = dish.ingredientCost - sim10;
+                        const saving20 = dish.ingredientCost - sim20;
+                        const key = `${dish.name}|${row.id}`;
+                        const activeReduction = simReductions[key];
+                        return (
+                          <div key={row.id} className={`p-3 rounded-xl border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`font-semibold text-sm truncate ${textColor}`}>{row.name}</span>
+                                {row.isPrep && <span className="text-[10px] text-[#967D62] shrink-0">(prep.)</span>}
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0 ml-2">
+                                <span className={`text-xs font-mono ${mutedText}`}>€{row.costRow.toFixed(3)}</span>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${row.pct > 40 ? (isDinner ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-50 text-rose-600') : row.pct > 20 ? (isDinner ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700') : (isDinner ? 'bg-[#334155] text-[#94A3B8]' : 'bg-gray-100 text-gray-500')}`}>
+                                  {row.pct.toFixed(0)}% del costo
+                                </span>
+                              </div>
+                            </div>
+                            {/* Barra peso */}
+                            <div className={`w-full h-1.5 rounded-full mb-3 ${isDinner ? 'bg-[#334155]' : 'bg-gray-200'}`}>
+                              <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.min(100, row.pct)}%` }} />
+                            </div>
+                            {/* Simulazioni */}
+                            <div className="flex gap-2 flex-wrap">
+                              {([10, 20] as const).map(pct => {
+                                const saving = pct === 10 ? saving10 : saving20;
+                                const newMargin = pct === 10 ? newMargin10 : newMargin20;
+                                const isActive = activeReduction === pct;
+                                return (
+                                  <button
+                                    key={pct}
+                                    onClick={() => setSimReductions(prev => ({ ...prev, [key]: isActive ? 0 : pct }))}
+                                    className={`flex-1 text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+                                      isActive
+                                        ? (isDinner ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700')
+                                        : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/50' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/50')
+                                    }`}
+                                  >
+                                    <div className="font-semibold">−{pct}% quantità</div>
+                                    <div className={`mt-0.5 ${isActive ? '' : mutedText}`}>
+                                      Risparmio: <span className="font-bold">€{saving.toFixed(3)}/porzione</span>
+                                    </div>
+                                    <div className={isActive ? '' : mutedText}>
+                                      Nuovo margine: <span className="font-bold">{newMargin.toFixed(1)}%</span>
+                                      <span className="ml-1 text-emerald-500">+{(newMargin - dish.marginPct).toFixed(1)}pp</span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ============================================================
+          TAB 4 — FREQUENZE
+      ============================================================ */}
+      {activeTab === 'frequenze' && (
+        <div className="space-y-6">
           <Card className={cardBg}>
             <CardHeader className="pb-3">
               <CardTitle className={`flex items-center gap-2 text-base ${textColor}`}>
@@ -811,18 +1160,15 @@ export function MenuProfitability({
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Drop zone */}
               <div
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => freqInputRef.current?.click()}
                 className={`relative flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
-                  isDragging
-                    ? 'border-[#967D62] bg-[#967D62]/10'
-                    : isDinner
-                      ? 'border-[#334155] bg-[#0F172A]/40 hover:border-[#967D62]/60'
-                      : 'border-[#D1CCC0] bg-[#F4F1EA]/40 hover:border-[#967D62]/60'
+                  isDragging ? 'border-[#967D62] bg-[#967D62]/10'
+                    : isDinner ? 'border-[#334155] bg-[#0F172A]/40 hover:border-[#967D62]/60'
+                    : 'border-[#D1CCC0] bg-[#F4F1EA]/40 hover:border-[#967D62]/60'
                 }`}
               >
                 <Upload className={`w-8 h-8 ${isDragging ? accent : mutedText}`} />
@@ -830,101 +1176,66 @@ export function MenuProfitability({
                   <p className={`text-sm font-semibold ${textColor}`}>Trascina il file qui o clicca per selezionare</p>
                   <p className={`text-xs mt-1 ${mutedText}`}>CSV · XLSX · XLS · JSON · TSV</p>
                 </div>
-                <input
-                  ref={freqInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls,.tsv,.txt,.json"
-                  onChange={handleFreqInputChange}
-                  className="hidden"
-                />
+                <input ref={freqInputRef} type="file" accept=".csv,.xlsx,.xls,.tsv,.txt,.json" onChange={handleFreqInputChange} className="hidden" />
               </div>
-
-              {/* Feedback import */}
               {freqImportMsg && (
                 <div className={`flex items-center gap-2 p-3 rounded-lg text-xs font-medium ${
-                  freqImportMsg.type === 'ok'   ? (isDinner ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200') :
-                  freqImportMsg.type === 'err'  ? (isDinner ? 'bg-rose-950/30 text-rose-400 border border-rose-800/40'          : 'bg-rose-50 text-rose-700 border border-rose-200') :
+                  freqImportMsg.type === 'ok'  ? (isDinner ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200') :
+                  freqImportMsg.type === 'err' ? (isDinner ? 'bg-rose-950/30 text-rose-400 border border-rose-800/40' : 'bg-rose-50 text-rose-700 border border-rose-200') :
                   (isDinner ? 'bg-blue-950/30 text-blue-400 border border-blue-800/40' : 'bg-blue-50 text-blue-700 border border-blue-200')
                 }`}>
                   {freqImportMsg.type === 'ok' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <Info className="w-3.5 h-3.5 shrink-0" />}
                   {freqImportMsg.msg}
                 </div>
               )}
-
-              {/* Periodo rilevato */}
               {freqPeriodLabel && (
                 <div className={`flex items-center gap-2 text-xs ${mutedText}`}>
                   <Package className="w-3.5 h-3.5" />
                   Periodo: <span className={`font-semibold ${textColor}`}>{freqPeriodLabel}</span>
-                  <button onClick={() => { setFrequencies({}); setFreqPeriodLabel(''); }} className={`ml-auto text-xs text-rose-500 hover:text-rose-400 transition-colors`}>
+                  <button onClick={() => { setFrequencies({}); setFreqPeriodLabel(''); }} className="ml-auto text-xs text-rose-500 hover:text-rose-400 transition-colors">
                     Rimuovi dati
                   </button>
                 </div>
               )}
-
-              {/* Formato atteso */}
               <div className={`p-3 rounded-lg border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
                 <p className={`text-[10px] font-semibold uppercase tracking-wider ${mutedText} mb-2`}>Esempio formato accettato</p>
                 <div className={`font-mono text-xs ${textColor}`}>
                   <div className={`grid grid-cols-3 gap-4 pb-1 mb-1 border-b ${dividerCls} font-bold`}>
                     <span>piatto</span><span>quantità</span><span>dal</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 opacity-70">
-                    <span>Bay burger</span><span>142</span><span>01/04</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4 opacity-70">
-                    <span>Mojito</span><span>89</span><span>01/04</span>
-                  </div>
+                  <div className="grid grid-cols-3 gap-4 opacity-70"><span>Bay burger</span><span>142</span><span>01/04</span></div>
+                  <div className="grid grid-cols-3 gap-4 opacity-70"><span>Mojito</span><span>89</span><span>01/04</span></div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Ranking */}
-          {rankingDishes.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center py-16 ${mutedText}`}>
-              <TrendingUp className="w-12 h-12 mb-3 opacity-20" />
-              <p className="text-sm font-medium">Importa le frequenze per vedere il ranking</p>
-              <p className="text-xs mt-1 opacity-70">L'indicatore combina margine % e volume ordini</p>
-            </div>
-          ) : (
+          {/* Ranking compatto */}
+          {rankingDishes.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-bold uppercase tracking-wider ${textColor}`}>
-                  Ranking per potenziale commerciale
-                  {topScore && <span className={`ml-2 text-xs font-normal ${mutedText}`}>— periodo: {freqPeriodLabel}</span>}
+                  Ranking — periodo: {freqPeriodLabel}
                 </h3>
                 <span className={`text-xs ${mutedText}`}>Margine% × Frequenza</span>
               </div>
-
               {rankingDishes.map((dish, idx) => {
                 const barW = maxScore > 0 ? ((dish.score ?? 0) / maxScore) * 100 : 0;
                 return (
                   <div key={dish.name} className={`flex items-center gap-4 p-3 rounded-xl border ${cardBg}`}>
-                    {/* Rank */}
-                    <div className={`w-7 text-center text-sm font-bold ${idx < 3 ? accent : mutedText}`}>
-                      {idx + 1}
-                    </div>
-                    {/* Info */}
+                    <div className={`w-7 text-center text-sm font-bold ${idx < 3 ? accent : mutedText}`}>{idx + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className={`text-sm font-semibold ${textColor} truncate`}>{dish.name}</div>
                       <div className="flex items-center gap-3 mt-1">
-                        {/* Barra score */}
                         <div className={`flex-1 h-1.5 rounded-full ${isDinner ? 'bg-[#334155]' : 'bg-[#EAE5DA]'}`}>
-                          <div
-                            className="h-full rounded-full bg-[#967D62] transition-all duration-500"
-                            style={{ width: `${barW}%` }}
-                          />
+                          <div className="h-full rounded-full bg-[#967D62] transition-all duration-500" style={{ width: `${barW}%` }} />
                         </div>
                       </div>
                     </div>
-                    {/* Stats */}
                     <div className="flex items-center gap-4 shrink-0">
                       <div className="text-right hidden sm:block">
                         <div className={`text-xs ${mutedText}`}>Margine</div>
-                        <div className={`text-sm font-bold ${marginColor(dish.marginPct)}`}>
-                          {dish.hasMissingCosts ? '—' : `${dish.marginPct.toFixed(1)}%`}
-                        </div>
+                        <div className={`text-sm font-bold ${marginColor(dish.marginPct)}`}>{dish.hasMissingCosts ? '—' : `${dish.marginPct.toFixed(1)}%`}</div>
                       </div>
                       <div className="text-right hidden sm:block">
                         <div className={`text-xs ${mutedText}`}>Ordini</div>
@@ -932,9 +1243,7 @@ export function MenuProfitability({
                       </div>
                       <div className="text-right">
                         <div className={`text-xs ${mutedText}`}>Score</div>
-                        <div className={`text-base font-bold ${accent}`}>
-                          {dish.score != null ? dish.score.toFixed(0) : '—'}
-                        </div>
+                        <div className={`text-base font-bold ${accent}`}>{dish.score != null ? dish.score.toFixed(0) : '—'}</div>
                       </div>
                     </div>
                   </div>
