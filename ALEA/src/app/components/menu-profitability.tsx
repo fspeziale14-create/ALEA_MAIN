@@ -220,7 +220,8 @@ export function MenuProfitability({
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
   const [hoveredBubble, setHoveredBubble] = useState<string | null>(null);
   // Simulazione riduzione quantità ingrediente (tab ingredienti)
-  const [simReductions, setSimReductions] = useState<Record<string, number>>({}); // ingId -> % riduzione (10 o 20)
+  const [simReductions, setSimReductions] = useState<Record<string, number>>({}); // `dishName|ingId` -> % riduzione (10 o 20)
+  const [openIngDishes, setOpenIngDishes] = useState<Set<string>>(new Set()); // dish names open in ingredienti tab
 
   // Prezzi manuali ingredienti (editing inline)
   const [editingIngId, setEditingIngId] = useState<string | null>(null);
@@ -1060,81 +1061,165 @@ export function MenuProfitability({
               {rivisitaDishes.map(dish => {
                 const breakdown = getIngBreakdown(dish.name);
                 if (breakdown.length === 0) return null;
+                const isOpen = openIngDishes.has(dish.name);
+
+                // Calcola costo simulato combinando tutti i tagli attivi per questo piatto
+                const activeCuts = breakdown.reduce((acc, row) => {
+                  const key = `${dish.name}|${row.id}`;
+                  const cut = simReductions[key];
+                  if (cut && cut > 0) acc[row.id] = cut;
+                  return acc;
+                }, {} as Record<string, number>);
+                const hasAnyCut = Object.keys(activeCuts).length > 0;
+
+                // Ricalcola costo totale con tutti i tagli attivi contemporaneamente
+                const combinedCost = (() => {
+                  if (!hasAnyCut) return dish.ingredientCost;
+                  const rows = recipes[dish.name] || [];
+                  let total = 0;
+                  rows.forEach(row => {
+                    const isPrep = row.ingredientId.startsWith('prep:');
+                    const prep = isPrep ? preparations.find(p => p.id === row.ingredientId.replace('prep:', '')) : null;
+                    const ing = !isPrep ? ingredients.find(i => i.id === row.ingredientId) : null;
+                    if (!ing && !prep) return;
+                    const ppu = isPrep ? null : calcWAC(ing!);
+                    const effectivePpp = row.portionsPerPiece ?? row.pcs_yield;
+                    const cut = activeCuts[row.ingredientId];
+                    const mult = cut ? (1 - cut / 100) : 1;
+                    let cost = 0;
+                    if (isPrep && prep) {
+                      let pc = 0; let pm = false;
+                      prep.ingredients.forEach(pr => {
+                        const pi = ingredients.find(i => i.id === pr.ingredientId);
+                        if (!pi) { pm = true; return; }
+                        const ppu2 = calcWAC(pi); if (!ppu2) { pm = true; return; }
+                        if (pr.portionsPerPiece && pr.portionsPerPiece > 0) pc += ppu2 / pr.portionsPerPiece;
+                        else pc += ppu2 * toBaseQty(pr.qty, pr.unit ?? pi.unit, pi.unit);
+                      });
+                      if (!pm) {
+                        const cpyu = pc / prep.yieldQty;
+                        if (effectivePpp && effectivePpp > 0) cost = (cpyu / effectivePpp) * mult;
+                        else cost = cpyu * toBaseQty(row.qty, row.unit ?? prep.yieldUnit, prep.yieldUnit) * mult;
+                      }
+                    } else if (ppu != null) {
+                      if (effectivePpp && effectivePpp > 0) cost = (ppu / effectivePpp) * mult;
+                      else cost = ppu * toBaseQty(row.qty, row.unit ?? ing!.unit, ing!.unit) * mult;
+                    }
+                    total += cost;
+                  });
+                  return total;
+                })();
+
+                const combinedMarginPct = dish.priceNet > 0 ? ((dish.priceNet - combinedCost) / dish.priceNet) * 100 : 0;
+                const marginDelta = combinedMarginPct - dish.marginPct;
+
                 return (
                   <Card key={dish.name} className={cardBg}>
-                    <CardHeader className="pb-3 border-b border-black/5 dark:border-white/5">
-                      <div className="flex items-start justify-between">
+                    {/* Header — sempre visibile, click per aprire/chiudere */}
+                    <button
+                      onClick={() => setOpenIngDishes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(dish.name)) next.delete(dish.name); else next.add(dish.name);
+                        return next;
+                      })}
+                      className={`w-full text-left border-b border-black/5 dark:border-white/5 transition-colors ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-gray-50'} rounded-t-xl`}
+                    >
+                      <div className="flex items-center justify-between p-4 pb-3">
                         <div>
-                          <CardTitle className={`text-base ${textColor}`}>{dish.name}</CardTitle>
-                          <p className={`text-xs ${mutedText} mt-0.5`}>{dish.category}</p>
+                          <div className={`text-base font-bold ${textColor}`}>{dish.name}</div>
+                          <div className={`text-xs ${mutedText} mt-0.5`}>{dish.category} · {breakdown.length} ingredienti</div>
                         </div>
-                        <div className="text-right shrink-0 ml-4">
-                          <div className={`text-xs ${mutedText}`}>Margine attuale</div>
-                          <div className="text-amber-500 font-bold text-lg">{dish.marginPct.toFixed(1)}%</div>
-                          <div className={`text-xs ${mutedText}`}>Food cost €{dish.ingredientCost.toFixed(2)}</div>
+                        <div className="flex items-center gap-4 shrink-0 ml-4">
+                          {/* Margine: attuale o combinato */}
+                          <div className="text-right">
+                            {hasAnyCut ? (
+                              <>
+                                <div className={`text-[10px] ${mutedText}`}>Margine simulato</div>
+                                <div className="text-emerald-500 font-bold text-lg">{combinedMarginPct.toFixed(1)}%</div>
+                                <div className="text-emerald-500 text-xs font-semibold">+{marginDelta.toFixed(1)}pp</div>
+                              </>
+                            ) : (
+                              <>
+                                <div className={`text-[10px] ${mutedText}`}>Margine attuale</div>
+                                <div className="text-amber-500 font-bold text-lg">{dish.marginPct.toFixed(1)}%</div>
+                                <div className={`text-xs ${mutedText}`}>FC €{dish.ingredientCost.toFixed(2)}</div>
+                              </>
+                            )}
+                          </div>
+                          {isOpen ? <ChevronUp className={`w-4 h-4 ${mutedText}`} /> : <ChevronDown className={`w-4 h-4 ${mutedText}`} />}
                         </div>
                       </div>
-                    </CardHeader>
-                    <CardContent className="pt-4 space-y-3">
-                      {breakdown.map(row => {
-                        const sim10 = simCost(dish.name, row.id, 10);
-                        const sim20 = simCost(dish.name, row.id, 20);
-                        const newMargin10 = dish.priceNet > 0 ? ((dish.priceNet - sim10) / dish.priceNet) * 100 : 0;
-                        const newMargin20 = dish.priceNet > 0 ? ((dish.priceNet - sim20) / dish.priceNet) * 100 : 0;
-                        const saving10 = dish.ingredientCost - sim10;
-                        const saving20 = dish.ingredientCost - sim20;
-                        const key = `${dish.name}|${row.id}`;
-                        const activeReduction = simReductions[key];
-                        return (
-                          <div key={row.id} className={`p-3 rounded-xl border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className={`font-semibold text-sm truncate ${textColor}`}>{row.name}</span>
-                                {row.isPrep && <span className="text-[10px] text-[#967D62] shrink-0">(prep.)</span>}
+                    </button>
+
+                    {/* Corpo collassabile */}
+                    {isOpen && (
+                      <CardContent className="pt-4 space-y-3">
+                        {breakdown.map(row => {
+                          const sim10 = simCost(dish.name, row.id, 10);
+                          const sim20 = simCost(dish.name, row.id, 20);
+                          const newMargin10 = dish.priceNet > 0 ? ((dish.priceNet - sim10) / dish.priceNet) * 100 : 0;
+                          const newMargin20 = dish.priceNet > 0 ? ((dish.priceNet - sim20) / dish.priceNet) * 100 : 0;
+                          const saving10 = dish.ingredientCost - sim10;
+                          const saving20 = dish.ingredientCost - sim20;
+                          const key = `${dish.name}|${row.id}`;
+                          const activeReduction = simReductions[key] || 0;
+                          return (
+                            <div key={row.id} className={`p-3 rounded-xl border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`font-semibold text-sm truncate ${textColor}`}>{row.name}</span>
+                                  {row.isPrep && <span className="text-[10px] text-[#967D62] shrink-0">(prep.)</span>}
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0 ml-2">
+                                  <span className={`text-xs font-mono ${mutedText}`}>€{row.costRow.toFixed(3)}</span>
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${row.pct > 40 ? (isDinner ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-50 text-rose-600') : row.pct > 20 ? (isDinner ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700') : (isDinner ? 'bg-[#334155] text-[#94A3B8]' : 'bg-gray-100 text-gray-500')}`}>
+                                    {row.pct.toFixed(0)}% del costo
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-3 shrink-0 ml-2">
-                                <span className={`text-xs font-mono ${mutedText}`}>€{row.costRow.toFixed(3)}</span>
-                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${row.pct > 40 ? (isDinner ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-50 text-rose-600') : row.pct > 20 ? (isDinner ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-50 text-amber-700') : (isDinner ? 'bg-[#334155] text-[#94A3B8]' : 'bg-gray-100 text-gray-500')}`}>
-                                  {row.pct.toFixed(0)}% del costo
-                                </span>
+                              <div className={`w-full h-1.5 rounded-full mb-3 ${isDinner ? 'bg-[#334155]' : 'bg-gray-200'}`}>
+                                <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.min(100, row.pct)}%` }} />
+                              </div>
+                              <div className="flex gap-2 flex-wrap">
+                                {([0, 10, 20] as const).map(pct => {
+                                  if (pct === 0) {
+                                    // Bottone "nessun taglio" — visibile solo se c'è un taglio attivo
+                                    if (activeReduction === 0) return null;
+                                    return (
+                                      <button key={0} onClick={() => setSimReductions(prev => { const n = {...prev}; delete n[key]; return n; })}
+                                        className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-rose-500/50' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-rose-400'}`}>
+                                        Rimuovi taglio
+                                      </button>
+                                    );
+                                  }
+                                  const saving = pct === 10 ? saving10 : saving20;
+                                  const newMargin = pct === 10 ? newMargin10 : newMargin20;
+                                  const isActive = activeReduction === pct;
+                                  return (
+                                    <button key={pct}
+                                      onClick={() => setSimReductions(prev => ({ ...prev, [key]: pct }))}
+                                      className={`flex-1 text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+                                        isActive
+                                          ? (isDinner ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700')
+                                          : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/50' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/50')
+                                      }`}>
+                                      <div className="font-semibold">−{pct}% quantità</div>
+                                      <div className={`mt-0.5 ${isActive ? '' : mutedText}`}>
+                                        Risparmio: <span className="font-bold">€{saving.toFixed(3)}/porz.</span>
+                                      </div>
+                                      <div className={isActive ? '' : mutedText}>
+                                        Margine sing.: <span className="font-bold">{newMargin.toFixed(1)}%</span>
+                                        <span className="ml-1 text-emerald-500">+{(newMargin - dish.marginPct).toFixed(1)}pp</span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
-                            {/* Barra peso */}
-                            <div className={`w-full h-1.5 rounded-full mb-3 ${isDinner ? 'bg-[#334155]' : 'bg-gray-200'}`}>
-                              <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.min(100, row.pct)}%` }} />
-                            </div>
-                            {/* Simulazioni */}
-                            <div className="flex gap-2 flex-wrap">
-                              {([10, 20] as const).map(pct => {
-                                const saving = pct === 10 ? saving10 : saving20;
-                                const newMargin = pct === 10 ? newMargin10 : newMargin20;
-                                const isActive = activeReduction === pct;
-                                return (
-                                  <button
-                                    key={pct}
-                                    onClick={() => setSimReductions(prev => ({ ...prev, [key]: isActive ? 0 : pct }))}
-                                    className={`flex-1 text-left px-3 py-2 rounded-lg border text-xs transition-all ${
-                                      isActive
-                                        ? (isDinner ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700')
-                                        : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/50' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/50')
-                                    }`}
-                                  >
-                                    <div className="font-semibold">−{pct}% quantità</div>
-                                    <div className={`mt-0.5 ${isActive ? '' : mutedText}`}>
-                                      Risparmio: <span className="font-bold">€{saving.toFixed(3)}/porzione</span>
-                                    </div>
-                                    <div className={isActive ? '' : mutedText}>
-                                      Nuovo margine: <span className="font-bold">{newMargin.toFixed(1)}%</span>
-                                      <span className="ml-1 text-emerald-500">+{(newMargin - dish.marginPct).toFixed(1)}pp</span>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
+                          );
+                        })}
+                      </CardContent>
+                    )}
                   </Card>
                 );
               })}
