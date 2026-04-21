@@ -86,6 +86,9 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   const {
     isDinner, textColor, mutedText, cardBg, accentColor, accentBg,
     planTab, setPlanTab, setActiveView,
+    hideHeader = false,
+    hideTabBar = false,
+    visibleTabs,
   } = p;
 
   // Aliases usati nel JSX originale
@@ -210,6 +213,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   return (
              <main className="flex-1 p-6 md:p-8 max-w-6xl mx-auto w-full">
                 <div className="space-y-6">
+                    {!hideHeader && (
                     <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
                         <div>
                             <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Pianificazione Strategica</h1>
@@ -229,6 +233,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                             </button>
                         )}
                     </div>
+                    )}
 
                     {planTab === 'inventario' && (
                         <div className="space-y-6">
