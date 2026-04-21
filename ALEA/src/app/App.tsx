@@ -2051,7 +2051,7 @@ function App() {
     <div className={`w-full overflow-hidden ${bgColor} transition-colors duration-500 min-h-screen font-sans relative`}>
       <SidebarProvider defaultOpen={true}>
         <DashboardSidebar activeView={activeView} onViewChange={handleViewChange} pastShiftsStatus={pastShiftsStatus} selectedDate={selectedDate} onSelectDate={setSelectedDate} onLogout={() => { setAppRole(null); }} appRole={appRole} userEmail={userEmail} />
-        <SidebarInset className={`w-full overflow-x-hidden ${bgColor} transition-colors duration-500`}>
+        <SidebarInset className={`w-full overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] ${bgColor} transition-colors duration-500`}>
           
           {/* MODALE GESTIONE MENU */}
           {isMenuModalOpen && (
