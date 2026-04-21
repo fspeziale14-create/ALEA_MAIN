@@ -2,7 +2,7 @@ import React from 'react';
 import { AttendibilitaResult } from './engine';
 import {
   Users, CalendarRange, Boxes, ClipboardList, CookingPot,
-  Plus, X, Check, Pencil, BookOpen, ChevronDown, ChevronUp,
+  Plus, X, Check, Pencil, BookOpen, ChevronDown, ChevronUp, ChevronRight, ArrowLeft,
   Loader2, CalendarDays, LayoutGrid, CheckCircle2,
   ChefHat, Moon, Settings2, Sun, TrendingUp
 } from 'lucide-react';
@@ -23,6 +23,7 @@ interface PianificazioneViewProps {
   setPlanTab: (v: 'sala' | 'inventario' | 'ricette' | 'cucina') => void;
   // staff
   weekGenerated: boolean; isGeneratingStaff: boolean;
+  setWeekGenerated: (v: boolean) => void;
   weeklyStaffData: any[]; staffDateRange: { start: string; end: string };
   generateStaffPlan: () => void;
   // budget
@@ -130,6 +131,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   const newPrepIdealQty = p.newPrepIdealQty; const setNewPrepIdealQty = p.setNewPrepIdealQty;
   const newPrepEditingIdeal = p.newPrepEditingIdeal; const setNewPrepEditingIdeal = p.setNewPrepEditingIdeal;
   const weekGenerated = p.weekGenerated; const isGeneratingStaff = p.isGeneratingStaff;
+  const setWeekGenerated = p.setWeekGenerated;
   const weeklyStaffData = p.weeklyStaffData; const staffDateRange = p.staffDateRange;
   const generateStaffPlan = p.generateStaffPlan;
   const isGeneratingBudget = p.isGeneratingBudget; const budgetGenerated = p.budgetGenerated;
@@ -213,32 +215,19 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                             <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Pianificazione Strategica</h1>
                             <p className={`${mutedText} mt-1`}>Genera le previsioni AI basate su 14 mesi di storico puro e meteo.</p>
                         </div>
-                        
-                        {planTab === 'sala' ? (
-                            <Button onClick={generateStaffPlan} disabled={isGeneratingStaff} className={`px-6 py-6 text-base font-semibold shadow-md disabled:opacity-70 bg-[#967D62] hover:bg-[#7A654E] ${isDinner ? 'text-[#F4F1EA]' : 'text-white'}`}>
-                                {isGeneratingStaff ? (<Loader2 className="w-5 h-5 mr-2 animate-spin" />) : (<CalendarRange className="w-5 h-5 mr-2" />)}
-                                Genera Turni Settimana
-                            </Button>
-                        ) : planTab === 'cucina' ? (
-                            <Button onClick={generateBudgetPlan} disabled={isGeneratingBudget} className={`px-6 py-6 text-base font-semibold shadow-md disabled:opacity-70 bg-[#967D62] hover:bg-[#7A654E] ${isDinner ? 'text-[#F4F1EA]' : 'text-white'}`}>
-                                {isGeneratingBudget ? (<Loader2 className="w-5 h-5 mr-2 animate-spin" />) : (<Boxes className="w-5 h-5 mr-2" />)}
-                                Calcola Fabbisogno Periodo
-                            </Button>
-                        ) : null}
-
-                    </div>
-
-                    <div className={`flex flex-wrap gap-1 p-1 rounded-lg border w-fit mb-6 ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
-                        {[
-                            { key: 'sala',         label: 'Convocazioni Sala',  icon: Users },
-                            { key: 'inventario',   label: 'Magazzino',           icon: ClipboardList },
-                            { key: 'ricette',      label: 'Ricette',             icon: BookOpen },
-                            { key: 'cucina',       label: 'Volumi e Budget',     icon: Boxes },
-                        ].map(({ key, label, icon: Icon }) => (
-                            <button key={key} onClick={() => setPlanTab(key as any)} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${planTab === key ? (isDinner ? 'bg-[#334155] text-[#F4F1EA] shadow-sm border border-[#475569]' : 'bg-white text-[#967D62] shadow-sm') : (isDinner ? 'text-[#94A3B8] hover:text-[#F4F1EA]' : 'text-[#8C8A85] hover:text-[#2C2A28]')}`}>
-                                <Icon className="w-4 h-4" /> {label}
+                        {planTab !== 'sala' && (
+                            <button
+                                onClick={() => setPlanTab('sala')}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:shadow-sm
+                                    ${isDinner
+                                        ? 'bg-[#1E293B] border-[#334155] text-[#C4A882] hover:border-[#967D62]'
+                                        : 'bg-white border-[#C4B9A8] text-[#967D62] hover:border-[#967D62]'
+                                    }`}
+                            >
+                                <ArrowLeft className="w-4 h-4" />
+                                Previsione settimanale
                             </button>
-                        ))}
+                        )}
                     </div>
 
                     {planTab === 'inventario' && (
@@ -915,15 +904,58 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                     {planTab === 'sala' && (
                         <>
                             {!weekGenerated ? (
-                                <div className={`mt-8 text-center p-12 border-2 border-dashed rounded-2xl ${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA] bg-gray-50'}`}>
-                                    <Users className={`w-16 h-16 mx-auto mb-4 opacity-50 ${mutedText}`} />
-                                    <h3 className={`text-lg font-bold ${textColor}`}>Nessuna settimana generata</h3>
-                                    <p className={`${mutedText} mt-2`}>Premi il pulsante per generare la programmazione da Lunedì a Domenica.</p>
-                                </div>
+                                // ── CTA GRANDE: genera settimana ──────────────────────
+                                <button
+                                    onClick={isGeneratingStaff ? undefined : generateStaffPlan}
+                                    disabled={isGeneratingStaff}
+                                    className={`w-full mt-2 group relative overflow-hidden rounded-2xl border-2 transition-all duration-200
+                                        ${isGeneratingStaff ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:shadow-lg hover:-translate-y-0.5'}
+                                        ${isDinner
+                                            ? 'border-[#334155] bg-[#1E293B] hover:border-[#967D62]'
+                                            : 'border-[#EAE5DA] bg-white hover:border-[#967D62]'
+                                        }`}
+                                >
+                                    <div className="flex flex-col items-center justify-center py-16 px-8 gap-5">
+                                        <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-colors
+                                            ${isGeneratingStaff
+                                                ? (isDinner ? 'bg-[#967D62]/20' : 'bg-[#967D62]/10')
+                                                : (isDinner ? 'bg-[#967D62]/20 group-hover:bg-[#967D62]/30' : 'bg-[#967D62]/10 group-hover:bg-[#967D62]/20')
+                                            }`}>
+                                            {isGeneratingStaff
+                                                ? <Loader2 className="w-9 h-9 text-[#967D62] animate-spin" />
+                                                : <CalendarRange className="w-9 h-9 text-[#967D62]" />
+                                            }
+                                        </div>
+                                        <div className="text-center">
+                                            <h3 className={`text-xl font-bold mb-1.5 ${textColor}`}>
+                                                {isGeneratingStaff ? 'Generazione in corso…' : 'Genera Turni Settimana'}
+                                            </h3>
+                                            <p className={`text-sm ${mutedText}`}>
+                                                {isGeneratingStaff
+                                                    ? 'Calcolo previsioni AI su 14 mesi di storico e meteo.'
+                                                    : 'Ottimizza la programmazione da Lunedì a Domenica basandosi sullo storico AI e le previsioni meteo.'}
+                                            </p>
+                                        </div>
+                                        {!isGeneratingStaff && (
+                                            <div className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-colors
+                                                bg-[#967D62] text-white group-hover:bg-[#7A654E]`}>
+                                                Genera ora
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
                             ) : (
                                 <div className="space-y-4">
-                                    <div className={`p-4 rounded-xl border ${accentBg} flex items-center justify-center`}>
+                                    <div className={`p-4 rounded-xl border ${accentBg} flex items-center justify-between`}>
                                         <span className={`font-bold ${accentColor} uppercase tracking-wider`}>Programmazione dal {staffDateRange.start} al {staffDateRange.end}</span>
+                                        <button
+                                            onClick={() => setWeekGenerated(false)}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors
+                                                ${isDinner ? 'bg-[#334155] text-[#F4F1EA] hover:bg-[#475569]' : 'bg-white border border-[#C4B9A8] text-[#967D62] hover:bg-[#F4F1EA]'}`}
+                                        >
+                                            <X className="w-4 h-4" />
+                                            Chiudi
+                                        </button>
                                     </div>
                                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                                         {weeklyStaffData.map((dayData, idx) => {
@@ -1077,6 +1109,10 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                             <Label className={textColor}>Durata (Giorni)</Label>
                                             <Input type="number" min="1" max="30" value={budgetDuration} onChange={e => setBudgetDuration(parseInt(e.target.value))} className={isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA] bg-white'} />
                                         </div>
+                                        <Button onClick={generateBudgetPlan} disabled={isGeneratingBudget} className={`shrink-0 px-5 py-2.5 font-semibold shadow-sm disabled:opacity-70 bg-[#967D62] hover:bg-[#7A654E] ${isDinner ? 'text-[#F4F1EA]' : 'text-white'}`}>
+                                            {isGeneratingBudget ? (<Loader2 className="w-4 h-4 mr-2 animate-spin" />) : (<Boxes className="w-4 h-4 mr-2" />)}
+                                            Calcola Fabbisogno
+                                        </Button>
                                     </CardContent>
                                 )}
                             </Card>
@@ -1085,7 +1121,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                 <div className={`mt-8 text-center p-12 border-2 border-dashed rounded-2xl ${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA] bg-gray-50'}`}>
                                     <Boxes className={`w-16 h-16 mx-auto mb-4 opacity-50 ${mutedText}`} />
                                     <h3 className={`text-lg font-bold ${textColor}`}>Nessun budget calcolato</h3>
-                                    <p className={`${mutedText} mt-2`}>Usa l'ingranaggio per scegliere le date, poi premi Calcola Fabbisogno.</p>
+                                    <p className={`${mutedText} mt-2`}>Apri le impostazioni con l'ingranaggio, imposta le date e premi Calcola Fabbisogno.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-6">
@@ -1141,22 +1177,54 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                     )}
                 </div>
 
-                {/* ── Accesso secondario: Prenotazioni e Gestione Sala ── */}
+                {/* ── Accesso secondario: card stile Menu ── */}
                 {planTab !== 'inventario' && planTab !== 'ricette' && (
-                <div className={`flex items-center gap-3 pt-4 pb-2 px-1 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
+                    {/* Prenotazioni — disabilitata */}
+                    <div className={`relative text-left p-6 rounded-2xl border transition-all duration-200 cursor-not-allowed opacity-50
+                        ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-[#FDFAF5] border-[#EAE5DA]'}`}>
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4
+                            ${isDinner ? 'bg-[#967D62]/20 text-[#C4A882]' : 'bg-[#967D62]/10 text-[#967D62]'}`}>
+                            <CalendarDays className="w-5 h-5" />
+                        </div>
+                        <h3 className={`font-bold text-base mb-1.5 ${textColor}`}>Prenotazioni</h3>
+                        <p className={`text-sm leading-relaxed ${mutedText}`}>Gestisci le prenotazioni del ristorante per pranzo e cena.</p>
+                        <span className={`inline-block mt-4 text-xs font-bold px-2.5 py-1 rounded-full ${isDinner ? 'bg-[#334155] text-[#94A3B8]' : 'bg-black/5 text-[#8C8A85]'}`}>
+                            Coming Soon
+                        </span>
+                    </div>
+
+                    {/* Gestione Sala — disabilitata */}
+                    <div className={`relative text-left p-6 rounded-2xl border transition-all duration-200 cursor-not-allowed opacity-50
+                        ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-[#FDFAF5] border-[#EAE5DA]'}`}>
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4
+                            ${isDinner ? 'bg-[#967D62]/20 text-[#C4A882]' : 'bg-[#967D62]/10 text-[#967D62]'}`}>
+                            <LayoutGrid className="w-5 h-5" />
+                        </div>
+                        <h3 className={`font-bold text-base mb-1.5 ${textColor}`}>Gestione Sala</h3>
+                        <p className={`text-sm leading-relaxed ${mutedText}`}>Mappa tavoli, stato coperti e coordinamento in tempo reale.</p>
+                        <span className={`inline-block mt-4 text-xs font-bold px-2.5 py-1 rounded-full ${isDinner ? 'bg-[#334155] text-[#94A3B8]' : 'bg-black/5 text-[#8C8A85]'}`}>
+                            Coming Soon
+                        </span>
+                    </div>
+
+                    {/* Volumi e Budget — attiva */}
                     <button
-                        onClick={() => setActiveView('Prenotazioni')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors whitespace-nowrap ${isDinner ? 'border-[#334155] text-[#94A3B8] hover:bg-[#334155] hover:text-[#F4F1EA]' : 'border-[#C4B9A8] text-[#967D62] hover:bg-[#EAE5DA] hover:text-[#2C2A28]'}`}
-                    >
-                        <CalendarDays className="w-4 h-4 shrink-0" />
-                        <span>Prenotazioni</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveView('Gestione Sala')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors whitespace-nowrap ${isDinner ? 'border-[#334155] text-[#94A3B8] hover:bg-[#334155] hover:text-[#F4F1EA]' : 'border-[#C4B9A8] text-[#967D62] hover:bg-[#EAE5DA] hover:text-[#2C2A28]'}`}
-                    >
-                        <LayoutGrid className="w-4 h-4 shrink-0" />
-                        <span>Gestione Sala</span>
+                        onClick={() => setPlanTab('cucina')}
+                        className={`group text-left p-6 rounded-2xl border transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5
+                            ${isDinner
+                                ? 'bg-[#1E293B] border-[#334155] hover:border-[#967D62]'
+                                : 'bg-[#FDFAF5] border-[#EAE5DA] hover:border-[#967D62] hover:bg-white'
+                            }`}>
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-colors
+                            ${isDinner ? 'bg-[#967D62]/20 text-[#C4A882] group-hover:bg-[#967D62]/30' : 'bg-[#967D62]/10 text-[#967D62] group-hover:bg-[#967D62]/20'}`}>
+                            <Boxes className="w-5 h-5" />
+                        </div>
+                        <h3 className={`font-bold text-base mb-1.5 ${textColor}`}>Volumi e Budget</h3>
+                        <p className={`text-sm leading-relaxed ${mutedText}`}>Calcola il fabbisogno ingredienti e il budget su un periodo personalizzabile.</p>
+                        <div className={`flex items-center gap-1 mt-4 text-xs font-semibold ${isDinner ? 'text-[#C4A882]' : 'text-[#967D62]'}`}>
+                            Apri <ChevronRight className="w-3.5 h-3.5" />
+                        </div>
                     </button>
                 </div>
                 )}
