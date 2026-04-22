@@ -253,7 +253,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
             name: item.name.trim(),
             unit,
             idealQty,
-            currentQty: 0,
+            currentQty: typeof item.currentQty === 'number' ? item.currentQty : 0,
             suppliers,
             purchaseHistory: [],
           });
