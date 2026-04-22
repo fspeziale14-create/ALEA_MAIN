@@ -11,7 +11,7 @@ import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card';
 import { Separator } from './components/ui/separator';
-import { weekDaysOrdered, mapDays, MENU_CATEGORIES } from './constants';
+import { weekDaysOrdered, mapDays, MENU_CATEGORIES, MENU_PRICES } from './constants';
 
 interface PianificazioneViewProps {
   isDinner: boolean;
@@ -79,6 +79,10 @@ interface PianificazioneViewProps {
   setActiveView: (v: string) => void;
   // attendibilita & weekly
   getFestivitaAvviso: (d: string) => string | null;
+  // prezzi menu
+  menuPrices: Record<string, number>;
+  setMenuPrices: (fn: any) => void;
+  saveMenuPrice: (dishName: string, price: number) => Promise<void>;
 }
 
 export function PianificazioneView(props: PianificazioneViewProps) {
@@ -101,6 +105,9 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   const convertToUnit = p.convertToUnit;
   const isPieceUnit = p.isPieceUnit;
   const isMeasuredUnit = p.isMeasuredUnit;
+  const menuPrices = p.menuPrices;
+  const setMenuPrices = p.setMenuPrices;
+  const saveMenuPrice = p.saveMenuPrice;
   const newIngName = p.newIngName; const setNewIngName = p.setNewIngName;
   const newIngUnit = p.newIngUnit; const setNewIngUnit = p.setNewIngUnit;
   const newIngIdeal = p.newIngIdeal; const setNewIngIdeal = p.setNewIngIdeal;
@@ -154,6 +161,10 @@ export function PianificazioneView(props: PianificazioneViewProps) {
 
   // Modalità input pz/conf: 'pezziPerPorzione' = "per 1 porzione servono N pz", 'porzioniPerPezzo' = "con 1 pz faccio N porzioni" (default)
   const [pieceInputMode, setPieceInputMode] = React.useState<'porzioniPerPezzo' | 'pezziPerPorzione'>('porzioniPerPezzo');
+
+  // State per editing prezzo piatto
+  const [editingPriceDish, setEditingPriceDish] = React.useState<string | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = React.useState<string>('');
 
   // MCM tra due interi
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
@@ -650,7 +661,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                         {ingredients.length === 0 && preparations.length === 0 ? (
                                             <p className={`text-sm text-center py-4 ${mutedText}`}>Nessun ingrediente inserito.</p>
                                         ) : (
-                                            <div className="space-y-2 max-h-80 overflow-y-auto">
+                                            <div className="space-y-2 max-h-80 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                                 {/* Ingredienti acquistati */}
                                                 {ingredients.map(ing => {
                                                     const pct = ing.idealQty > 0 ? (ing.currentQty / ing.idealQty) * 100 : 100;
@@ -776,7 +787,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                         {preparations.length === 0 ? (
                                             <p className={`text-sm text-center py-4 ${mutedText}`}>Nessuna preparazione inserita.</p>
                                         ) : (
-                                            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                                            <div className="space-y-3 max-h-[500px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                                 {preparations.map(prep => {
                                                     const costPerUnit = (() => {
                                                         if (prep.yieldQty === 0) return null;
@@ -976,13 +987,77 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                 const isEditing = editingRecipeDish === dish;
                                                 return (
                                                     <div key={dish} className={`rounded-lg border overflow-hidden ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
-                                                        <button onClick={() => setEditingRecipeDish(isEditing ? null : dish)} className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold transition-colors ${isEditing ? (isDinner ? 'bg-[#334155] text-[#F4F1EA]' : 'bg-gray-100 text-[#2C2A28]') : (isDinner ? 'bg-[#1E293B] text-[#94A3B8] hover:bg-[#334155]' : 'bg-white text-[#8C8A85] hover:bg-gray-50')}`}>
-                                                            <span>{dish}</span>
-                                                            <span className="flex items-center gap-2">
-                                                                {dishRecipe.length > 0 && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDinner ? 'bg-[#967D62]/20 text-[#967D62]' : 'bg-[#967D62]/10 text-[#967D62]'}`}>{dishRecipe.length} ing.</span>}
-                                                                {isEditing ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                                            </span>
-                                                        </button>
+                                                        <div className={`flex items-center text-sm font-semibold transition-colors ${isEditing ? (isDinner ? 'bg-[#334155]' : 'bg-gray-100') : (isDinner ? 'bg-[#1E293B]' : 'bg-white')}`}>
+                                                            {/* Nome piatto — click per aprire/chiudere ricetta */}
+                                                            <button onClick={() => setEditingRecipeDish(isEditing ? null : dish)} className={`flex-1 flex items-center justify-between px-4 py-2.5 text-left transition-colors ${isEditing ? (isDinner ? 'text-[#F4F1EA]' : 'text-[#2C2A28]') : (isDinner ? 'text-[#94A3B8] hover:text-[#F4F1EA]' : 'text-[#8C8A85] hover:text-[#2C2A28]')}`}>
+                                                                <span>{dish}</span>
+                                                                <span className="flex items-center gap-2">
+                                                                    {dishRecipe.length > 0 && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDinner ? 'bg-[#967D62]/20 text-[#967D62]' : 'bg-[#967D62]/10 text-[#967D62]'}`}>{dishRecipe.length} ing.</span>}
+                                                                    {isEditing ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                                                </span>
+                                                            </button>
+                                                            {/* Prezzo vendita — inline edit con matita/salva */}
+                                                            <div className={`flex items-center gap-1.5 px-4 border-l ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'} shrink-0 min-w-[100px] justify-end`}>
+                                                                {editingPriceDish === dish ? (
+                                                                    <>
+                                                                        <span className={`text-xs ${mutedText}`}>€</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.1"
+                                                                            min="0"
+                                                                            value={editingPriceValue}
+                                                                            onChange={e => setEditingPriceValue(e.target.value)}
+                                                                            onKeyDown={e => {
+                                                                                if (e.key === 'Enter') {
+                                                                                    const val = parseFloat(editingPriceValue);
+                                                                                    if (!isNaN(val) && val > 0) {
+                                                                                        setMenuPrices((prev: Record<string,number>) => ({ ...prev, [dish]: val }));
+                                                                                        saveMenuPrice(dish, val);
+                                                                                    }
+                                                                                    setEditingPriceDish(null);
+                                                                                }
+                                                                                if (e.key === 'Escape') setEditingPriceDish(null);
+                                                                            }}
+                                                                            autoFocus
+                                                                            className={`w-16 text-xs text-right rounded px-1 py-0.5 border ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                const val = parseFloat(editingPriceValue);
+                                                                                if (!isNaN(val) && val > 0) {
+                                                                                    setMenuPrices((prev: Record<string,number>) => ({ ...prev, [dish]: val }));
+                                                                                    saveMenuPrice(dish, val);
+                                                                                }
+                                                                                setEditingPriceDish(null);
+                                                                            }}
+                                                                            className="text-emerald-500 hover:text-emerald-400 transition-colors"
+                                                                            title="Salva prezzo"
+                                                                        >
+                                                                            <Check className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <button onClick={() => setEditingPriceDish(null)} className={`${mutedText} hover:text-rose-400 transition-colors`} title="Annulla">
+                                                                            <X className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className={`text-sm font-mono font-semibold ${menuPrices[dish] ? accentColor : mutedText}`}>
+                                                                            €{((menuPrices[dish] ?? (MENU_PRICES as Record<string,number>)[dish]) ?? 0).toFixed(2)}
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingPriceDish(dish);
+                                                                                setEditingPriceValue(String(menuPrices[dish] ?? (MENU_PRICES as Record<string,number>)[dish] ?? ''));
+                                                                            }}
+                                                                            className={`${mutedText} hover:text-[#967D62] transition-colors ml-1`}
+                                                                            title="Modifica prezzo"
+                                                                        >
+                                                                            <Pencil className="w-3 h-3" />
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                         {isEditing && (
                                                             <div className={`p-3 space-y-2 ${isDinner ? 'bg-[#0F172A]' : 'bg-gray-50'}`}>
                                                                 {dishRecipe.map(({ ingredientId, qty, unit: rowUnit, portionsPerPiece }: any) => {
