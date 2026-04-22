@@ -1000,7 +1000,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                             <div className={`flex items-center gap-1.5 px-4 border-l ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'} shrink-0 min-w-[100px] justify-end`}>
                                                                 {editingPriceDish === dish ? (
                                                                     <>
-                                                                        <span className={`text-xs ${mutedText}`}>€</span>
+                                                                        <span className={`text-sm font-semibold ${mutedText}`}>€</span>
                                                                         <input
                                                                             type="number"
                                                                             step="0.1"
@@ -1019,7 +1019,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                                                 if (e.key === 'Escape') setEditingPriceDish(null);
                                                                             }}
                                                                             autoFocus
-                                                                            className={`w-16 text-xs text-right rounded px-1 py-0.5 border ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
+                                                                            className={`w-24 text-sm text-right rounded-md px-2 py-1.5 border font-mono ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
                                                                         />
                                                                         <button
                                                                             onClick={() => {
@@ -1030,13 +1030,15 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                                                 }
                                                                                 setEditingPriceDish(null);
                                                                             }}
-                                                                            className="text-emerald-500 hover:text-emerald-400 transition-colors"
-                                                                            title="Salva prezzo"
+                                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors bg-emerald-500 hover:bg-emerald-600 text-white"
                                                                         >
-                                                                            <Check className="w-3.5 h-3.5" />
+                                                                            <Check className="w-3.5 h-3.5" /> Salva
                                                                         </button>
-                                                                        <button onClick={() => setEditingPriceDish(null)} className={`${mutedText} hover:text-rose-400 transition-colors`} title="Annulla">
-                                                                            <X className="w-3.5 h-3.5" />
+                                                                        <button
+                                                                            onClick={() => setEditingPriceDish(null)}
+                                                                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${isDinner ? 'bg-[#334155] text-[#94A3B8] hover:bg-[#475569]' : 'bg-gray-100 text-[#8C8A85] hover:bg-gray-200'}`}
+                                                                        >
+                                                                            <X className="w-3.5 h-3.5" /> Annulla
                                                                         </button>
                                                                     </>
                                                                 ) : (
