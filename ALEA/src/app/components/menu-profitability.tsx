@@ -843,8 +843,8 @@ export function MenuProfitability({
         ))}
       </div>
 
-      {/* TAB SELECTOR */}
-      <div className={`flex flex-wrap gap-1 p-1 rounded-xl border mb-6 w-fit ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
+      {/* TAB SELECTOR — griglia 2x2 su mobile, riga su desktop */}
+      <div className={`grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 rounded-xl border mb-6 w-full ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
         {[
           { key: 'margini',     label: 'Analisi Margini',  icon: BarChart2 },
           { key: 'portfolio',   label: 'Portfolio',         icon: Target },
@@ -854,14 +854,14 @@ export function MenuProfitability({
           <button
             key={key}
             onClick={() => setActiveTab(key as any)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-center ${
               activeTab === key
                 ? (isDinner ? 'bg-[#967D62] text-white shadow-sm' : 'bg-white text-[#967D62] shadow-sm border border-[#EAE5DA]')
                 : `${mutedText} hover:text-[#967D62]`
             }`}
           >
-            <Icon className="w-4 h-4" />
-            {label}
+            <Icon className="w-4 h-4 shrink-0" />
+            <span>{label}</span>
           </button>
         ))}
       </div>
