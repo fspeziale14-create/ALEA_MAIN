@@ -75,9 +75,9 @@ export function ImpostazioniView(props: ImpostazioniViewProps) {
                             <Separator className={isDinner ? 'bg-[#334155]' : 'bg-[#EAE5DA]'} />
                             <div className="space-y-4 pt-2">
                                 <Label className={`text-base font-semibold ${textColor}`}>Gestione Accoglienza / Maitre</Label>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" onClick={() => setHostMode('fisso')} className={hostMode === 'fisso' ? '!bg-[#967D62] !text-white !border-[#967D62]' : `bg-transparent ${isDinner ? 'text-[#F4F1EA] border-[#334155] hover:bg-[#334155]' : 'text-black border-[#EAE5DA] hover:bg-gray-100'}`}>Fisso / Non Previsto</Button>
-                                    <Button variant="outline" onClick={() => setHostMode('dinamico')} className={hostMode === 'dinamico' ? '!bg-[#967D62] !text-white !border-[#967D62]' : `bg-transparent ${isDinner ? 'text-[#F4F1EA] border-[#334155] hover:bg-[#334155]' : 'text-black border-[#EAE5DA] hover:bg-gray-100'}`}>Dinamico (Variabile)</Button>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <Button variant="outline" onClick={() => setHostMode('fisso')} className={`flex-1 sm:flex-none ${hostMode === 'fisso' ? '!bg-[#967D62] !text-white !border-[#967D62]' : `bg-transparent ${isDinner ? 'text-[#F4F1EA] border-[#334155] hover:bg-[#334155]' : 'text-black border-[#EAE5DA] hover:bg-gray-100'}`}`}>Fisso / Non Previsto</Button>
+                                    <Button variant="outline" onClick={() => setHostMode('dinamico')} className={`flex-1 sm:flex-none ${hostMode === 'dinamico' ? '!bg-[#967D62] !text-white !border-[#967D62]' : `bg-transparent ${isDinner ? 'text-[#F4F1EA] border-[#334155] hover:bg-[#334155]' : 'text-black border-[#EAE5DA] hover:bg-gray-100'}`}`}>Dinamico (Variabile)</Button>
                                 </div>
                                 {hostMode === 'fisso' ? (
                                     <p className={`text-sm ${mutedText}`}>Personale fisso o gestito dai camerieri. Non verrà mostrato nei calcoli del turno.</p>
@@ -113,27 +113,27 @@ export function ImpostazioniView(props: ImpostazioniViewProps) {
                             </Button>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                                <Label className={`w-20 ${textColor} font-bold`}>PRANZO</Label>
+                            <div className="grid grid-cols-[auto_1fr_1fr] items-center gap-x-4 gap-y-2">
+                                <Label className={`font-bold ${textColor}`}>PRANZO</Label>
                                 <div className="flex items-center gap-2">
-                                    <span className={`text-xs ${mutedText}`}>Inizio:</span>
-                                    <Input type="time" value={pranzoStart} onChange={e => handleGlobalHourChange('pStart', e.target.value)} className={`w-28 ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
+                                    <span className={`text-xs w-8 shrink-0 ${mutedText}`}>Inizio</span>
+                                    <Input type="time" value={pranzoStart} onChange={e => handleGlobalHourChange('pStart', e.target.value)} className={`w-full ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className={`text-xs ${mutedText}`}>Fine:</span>
-                                    <Input type="time" value={pranzoEnd} onChange={e => handleGlobalHourChange('pEnd', e.target.value)} className={`w-28 ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
+                                    <span className={`text-xs w-8 shrink-0 ${mutedText}`}>Fine</span>
+                                    <Input type="time" value={pranzoEnd} onChange={e => handleGlobalHourChange('pEnd', e.target.value)} className={`w-full ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
                                 </div>
                             </div>
                             <Separator className={isDinner ? 'bg-[#334155]' : 'bg-[#EAE5DA]'} />
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                                <Label className={`w-20 ${textColor} font-bold`}>CENA</Label>
+                            <div className="grid grid-cols-[auto_1fr_1fr] items-center gap-x-4 gap-y-2">
+                                <Label className={`font-bold ${textColor}`}>CENA</Label>
                                 <div className="flex items-center gap-2">
-                                    <span className={`text-xs ${mutedText}`}>Inizio:</span>
-                                    <Input type="time" value={cenaStart} onChange={e => handleGlobalHourChange('cStart', e.target.value)} className={`w-28 ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
+                                    <span className={`text-xs w-8 shrink-0 ${mutedText}`}>Inizio</span>
+                                    <Input type="time" value={cenaStart} onChange={e => handleGlobalHourChange('cStart', e.target.value)} className={`w-full ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className={`text-xs ${mutedText}`}>Fine:</span>
-                                    <Input type="time" value={cenaEnd} onChange={e => handleGlobalHourChange('cEnd', e.target.value)} className={`w-28 ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
+                                    <span className={`text-xs w-8 shrink-0 ${mutedText}`}>Fine</span>
+                                    <Input type="time" value={cenaEnd} onChange={e => handleGlobalHourChange('cEnd', e.target.value)} className={`w-full ${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`} />
                                 </div>
                             </div>
 
