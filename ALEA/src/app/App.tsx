@@ -313,6 +313,14 @@ function App() {
   // Tab pianificazione aggiornata
   const [planTab, setPlanTab] = useState<'sala' | 'inventario' | 'ricette' | 'cucina'>('sala');
 
+  // ====== PREZZI MENU PERSONALIZZATI ======
+  // Sovrascrivono MENU_PRICES per utente. Formato: { [dishName]: price }
+  const [menuPrices, setMenuPrices] = useState<Record<string, number>>({});
+
+  // Restituisce il prezzo di un piatto (custom > fallback MENU_PRICES > 0)
+  const getDishPrice = (dishName: string): number =>
+    menuPrices[dishName] ?? MENU_PRICES[dishName] ?? 0;
+
   // ====== TAVOLI (STATO CONDIVISO TRA GESTIONALE E PERSONALE) ======
   const [tables, setTables] = useState<Table[]>([
       { id: 1, label: 'Tavolo 1', capacity: 2, status: 'free' },
@@ -492,6 +500,35 @@ function App() {
       };
       save();
   }, [preparations]);
+
+  // Carica menuPrices da Supabase al login
+  useEffect(() => {
+      if (!isLoggedIn) return;
+      const load = async () => {
+          const userId = (await supabase.auth.getUser()).data.user?.id;
+          if (!userId) return;
+          const { data } = await supabase
+              .from('menu_prices')
+              .select('dish_name, price')
+              .eq('user_id', userId);
+          if (data && data.length > 0) {
+              const map: Record<string, number> = {};
+              data.forEach(r => { map[r.dish_name] = Number(r.price); });
+              setMenuPrices(map);
+          }
+      };
+      load();
+  }, [isLoggedIn]);
+
+  // Salva un singolo prezzo su Supabase (chiamata on-demand, non su ogni cambio stato)
+  const saveMenuPrice = async (dishName: string, price: number) => {
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      if (!userId) return;
+      await supabase.from('menu_prices').upsert(
+          { user_id: userId, dish_name: dishName, price, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,dish_name' }
+      );
+  };
 
   useEffect(() => {
       try {
@@ -912,7 +949,7 @@ function App() {
   const calculateTableBill = (table: Table): number => {
       if (!table.orders) return 0;
       return table.orders.reduce((sum, order) => {
-          const price = MENU_PRICES[order.name] ?? 0;
+          const price = getDishPrice(order.name);
           return sum + price;
       }, 0);
   };
@@ -1517,7 +1554,7 @@ function App() {
                               return [...others, {
                                   tableId: activeTable.id, label: activeTable.label,
                                   orders: billOrders,
-                                  total: billOrders.reduce((s, o) => s + (MENU_PRICES[o.name] ?? 0), 0),
+                                  total: billOrders.reduce((s, o) => s + getDishPrice(o.name), 0),
                                   reservationName: reservation?.name || activeTable.reservationName,
                                   pax: activeTable.pax, paid: false,
                               }];
@@ -2013,7 +2050,7 @@ function App() {
                                               {bill.orders.map((order, idx) => (
                                                   <div key={idx} className="flex justify-between items-center text-xs gap-1">
                                                       <span className={`truncate ${bill.paid ? 'line-through opacity-40' : mutedText}`}>{order.name}</span>
-                                                      <span className={`font-semibold shrink-0 ${bill.paid ? 'opacity-40' : accentColor}`}>{MENU_PRICES[order.name] != null ? `€${MENU_PRICES[order.name].toFixed(2)}` : '—'}</span>
+                                                      <span className={`font-semibold shrink-0 ${bill.paid ? 'opacity-40' : accentColor}`}>{getDishPrice(order.name) > 0 ? `€${getDishPrice(order.name).toFixed(2)}` : '—'}</span>
                                                   </div>
                                               ))}
                                           </div>
@@ -2219,6 +2256,7 @@ function App() {
               convertToUnit={convertToUnit} isPieceUnit={isPieceUnit} isMeasuredUnit={isMeasuredUnit}
               setActiveView={setActiveView}
               getFestivitaAvviso={getFestivitaAvviso}
+              menuPrices={menuPrices} setMenuPrices={setMenuPrices} saveMenuPrice={saveMenuPrice}
             />
           )}
 
@@ -2415,6 +2453,7 @@ function App() {
                 convertToUnit={convertToUnit} isPieceUnit={isPieceUnit} isMeasuredUnit={isMeasuredUnit}
                 setActiveView={setActiveView}
                 getFestivitaAvviso={getFestivitaAvviso}
+                menuPrices={menuPrices} setMenuPrices={setMenuPrices} saveMenuPrice={saveMenuPrice}
               />
             </>
           )}
@@ -2484,6 +2523,7 @@ function App() {
                 convertToUnit={convertToUnit} isPieceUnit={isPieceUnit} isMeasuredUnit={isMeasuredUnit}
                 setActiveView={setActiveView}
                 getFestivitaAvviso={getFestivitaAvviso}
+                menuPrices={menuPrices} setMenuPrices={setMenuPrices} saveMenuPrice={saveMenuPrice}
               />
             </>
           )}
