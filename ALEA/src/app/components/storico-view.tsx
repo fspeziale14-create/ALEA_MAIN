@@ -7,8 +7,13 @@ import { useState, useEffect } from 'react';
 import {
   Trash2, GitCompare, ChevronDown, ChevronUp, X,
   TrendingUp, TrendingDown, Minus, Star, Target,
-  ArrowUp, ArrowDown, BarChart2, Calendar, AlertCircle, Check
+  ArrowUp, ArrowDown, BarChart2, Calendar, AlertCircle, Check,
+  Plus, LineChart as LineChartIcon, Zap
 } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend
+} from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 // ── TIPI ─────────────────────────────────────────────────────────
@@ -76,6 +81,7 @@ export function StoricoView({
   const divider  = isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]';
   const rowHover = isDinner ? 'hover:bg-[#334155]/40' : 'hover:bg-[#F4F1EA]/60';
 
+  const [activeTab, setActiveTab] = useState<'periodi' | 'confronto' | 'trend'>('periodi');
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -86,6 +92,17 @@ export function StoricoView({
   const [compareMode, setCompareMode] = useState(false);
   const [compareA, setCompareA] = useState<string | null>(null);
   const [compareB, setCompareB] = useState<string | null>(null);
+
+  // Trend: piatti selezionati per i grafici
+  const [trendDishes, setTrendDishes] = useState<string[]>([]);
+  const [trendDropdownOpen, setTrendDropdownOpen] = useState(false);
+  const [trendSearch, setTrendSearch] = useState('');
+
+  // Palette colori per le linee
+  const TREND_COLORS = [
+    '#967D62', '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+    '#8B5CF6', '#06B6D4', '#F97316', '#84CC16', '#EC4899',
+  ];
 
   // Carica snapshots
   useEffect(() => {
@@ -147,6 +164,73 @@ export function StoricoView({
 
   const comparison = compareMode ? buildComparison() : null;
 
+  // ── TREND HELPERS ────────────────────────────────────────────
+  // Snapshots ordinati cronologicamente per i grafici
+  const chronoSnapshots = [...snapshots].sort((a, b) => a.period_start.localeCompare(b.period_start));
+
+  // Tutti i nomi piatto presenti in almeno uno snapshot
+  const allDishNames = Array.from(new Set(
+    snapshots.flatMap(s => s.data.dishes.map(d => d.name))
+  )).sort();
+
+  // Costruisce serie dati per un piatto e una metrica
+  const buildSeries = (dishName: string, metric: 'frequency' | 'marginPct' | 'score') => {
+    return chronoSnapshots.map(snap => {
+      const dish = snap.data.dishes.find(d => d.name === dishName);
+      const val = dish
+        ? metric === 'score' ? (dish.score ?? null) : dish[metric]
+        : null;
+      return {
+        period: snap.label,
+        value: val != null ? parseFloat(val.toFixed(1)) : null,
+      };
+    });
+  };
+
+  // Dati per grafico: array di oggetti { period, [dishName]: value }
+  const buildChartData = (metric: 'frequency' | 'marginPct' | 'score') => {
+    if (trendDishes.length === 0) return [];
+    return chronoSnapshots.map(snap => {
+      const point: Record<string, any> = { period: snap.label };
+      trendDishes.forEach(name => {
+        const dish = snap.data.dishes.find(d => d.name === name);
+        if (dish) {
+          const val = metric === 'score' ? dish.score : dish[metric];
+          point[name] = val != null ? parseFloat((val as number).toFixed(1)) : null;
+        }
+      });
+      return point;
+    });
+  };
+
+  // Rileva correlazioni prezzo-frequenza
+  const detectCorrelations = () => {
+    if (chronoSnapshots.length < 2) return [];
+    const results: Array<{ dish: string; periodA: string; periodB: string; priceDiff: number; freqDiff: number; type: 'positive' | 'negative' }> = [];
+    for (let i = 1; i < chronoSnapshots.length; i++) {
+      const prev = chronoSnapshots[i - 1];
+      const curr = chronoSnapshots[i];
+      prev.data.dishes.forEach(dPrev => {
+        const dCurr = curr.data.dishes.find(d => d.name === dPrev.name);
+        if (!dCurr) return;
+        const priceDiff = dCurr.priceNet - dPrev.priceNet;
+        const freqDiff = dCurr.frequency - dPrev.frequency;
+        // Solo se prezzo è cambiato E frequenza è cambiata in modo significativo
+        if (Math.abs(priceDiff) < 0.1 || Math.abs(freqDiff) < 3) return;
+        const type = (priceDiff < 0 && freqDiff > 0) || (priceDiff > 0 && freqDiff < 0) ? 'positive' : 'negative';
+        results.push({ dish: dPrev.name, periodA: prev.label, periodB: curr.label, priceDiff, freqDiff, type });
+      });
+    }
+    return results;
+  };
+
+  const correlations = detectCorrelations();
+
+  // Nomi filtrati per dropdown trend
+  const filteredDishNames = allDishNames.filter(n =>
+    n.toLowerCase().includes(trendSearch.toLowerCase()) && !trendDishes.includes(n)
+  );
+
   // ── RENDER ────────────────────────────────────────────────────
 
   if (loading) {
@@ -168,23 +252,30 @@ export function StoricoView({
               : `${snapshots.length} period${snapshots.length === 1 ? 'o' : 'i'} salvat${snapshots.length === 1 ? 'o' : 'i'}.`}
           </p>
         </div>
-        {snapshots.length >= 2 && (
-          <button
-            onClick={() => { setCompareMode(v => !v); setCompareA(null); setCompareB(null); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-              compareMode
-                ? 'bg-[#967D62] text-white border-[#967D62]'
-                : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/60' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/60')
+
+      </div>
+
+      {/* ── TAB SELECTOR ── */}
+      <div className={`grid grid-cols-3 gap-1 p-1 rounded-xl border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
+        {([
+          { key: 'periodi',   label: 'Periodi',   icon: Calendar },
+          { key: 'confronto', label: 'Confronto', icon: GitCompare },
+          { key: 'trend',     label: 'Trend',     icon: LineChartIcon },
+        ] as const).map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setActiveTab(key)}
+            className={`flex items-center justify-center gap-2 px-2 py-2.5 rounded-lg text-sm font-semibold transition-all w-full ${
+              activeTab === key
+                ? (isDinner ? 'bg-[#967D62] text-white shadow-sm' : 'bg-white text-[#967D62] shadow-sm border border-[#EAE5DA]')
+                : `${mutedText} hover:text-[#967D62]`
             }`}
           >
-            <GitCompare className="w-4 h-4" />
-            {compareMode ? 'Esci dal confronto' : 'Confronta periodi'}
+            <Icon className="w-4 h-4 shrink-0" /><span>{label}</span>
           </button>
-        )}
+        ))}
       </div>
 
       {/* ── SELEZIONE CONFRONTO ── */}
-      {compareMode && (
+      {activeTab === 'confronto' && (
         <Card className={cardBg}>
           <CardContent className="pt-5">
             <p className={`text-sm font-semibold ${textColor} mb-3`}>
@@ -218,7 +309,7 @@ export function StoricoView({
       )}
 
       {/* ── RISULTATI CONFRONTO ── */}
-      {compareMode && compareA && compareB && comparison && (
+      {activeTab === 'confronto' && compareA && compareB && comparison && (
         <div className="space-y-4">
           {/* KPI confronto */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -319,12 +410,12 @@ export function StoricoView({
       )}
 
       {/* ── LISTA PERIODI ── */}
-      {snapshots.length === 0 ? (
+      {activeTab === 'periodi' && snapshots.length === 0 ? (
         <div className={`flex flex-col items-center justify-center py-20 gap-4 ${mutedText}`}>
           <BarChart2 className="w-12 h-12 opacity-30" />
           <p className="text-sm">Nessuna analisi salvata ancora.</p>
         </div>
-      ) : (
+      ) : activeTab === 'periodi' ? (
         <div className="space-y-3">
           <h2 className={`text-sm font-bold uppercase tracking-wider ${mutedText}`}>Periodi salvati</h2>
           {snapshots.map(snap => {
@@ -421,6 +512,220 @@ export function StoricoView({
               </Card>
             );
           })}
+        </div>
+      ) : null}
+
+      {/* ── TAB TREND ── */}
+      {activeTab === 'trend' && (
+        <div className="space-y-6">
+          {chronoSnapshots.length < 3 ? (
+            <div className={`flex flex-col items-center justify-center py-16 gap-3 ${mutedText}`}>
+              <LineChartIcon className="w-10 h-10 opacity-30" />
+              <p className="text-sm text-center">Servono almeno <span className="font-semibold">3 periodi</span> per visualizzare i trend.<br />Hai {chronoSnapshots.length} period{chronoSnapshots.length === 1 ? 'o' : 'i'} salvat{chronoSnapshots.length === 1 ? 'o' : 'i'}.</p>
+            </div>
+          ) : (
+            <>
+              {/* Selettore piatti */}
+              <Card className={cardBg}>
+                <CardContent className="pt-5">
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2`}>Piatti nel grafico</p>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {trendDishes.map((name, i) => (
+                          <span key={name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
+                            style={{ backgroundColor: TREND_COLORS[i % TREND_COLORS.length] }}>
+                            {name}
+                            <button onClick={() => setTrendDishes(prev => prev.filter(d => d !== name))} className="hover:opacity-70 transition-opacity">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                        {trendDishes.length === 0 && (
+                          <span className={`text-xs ${mutedText}`}>Nessun piatto selezionato — aggiungine uno dal menu.</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Dropdown aggiunta piatto */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setTrendDropdownOpen(v => !v)}
+                        disabled={trendDishes.length >= 10}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors disabled:opacity-40 ${
+                          isDinner ? 'border-[#334155] text-[#F4F1EA] hover:border-[#967D62]/60' : 'border-[#EAE5DA] text-[#2C2A28] hover:border-[#967D62]/60'
+                        }`}
+                      >
+                        <Plus className="w-4 h-4" /> Aggiungi piatto
+                      </button>
+                      {trendDropdownOpen && (
+                        <div className={`absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border shadow-xl ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}>
+                          <div className="p-2">
+                            <input
+                              type="text"
+                              value={trendSearch}
+                              onChange={e => setTrendSearch(e.target.value)}
+                              placeholder="Cerca piatto…"
+                              autoFocus
+                              className={`w-full px-3 py-2 rounded-lg border text-sm ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA] placeholder:text-[#475569]' : 'border-[#EAE5DA] placeholder:text-gray-400'}`}
+                            />
+                          </div>
+                          <div className="max-h-56 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            {filteredDishNames.length === 0 ? (
+                              <p className={`text-xs text-center py-4 ${mutedText}`}>Nessun piatto trovato.</p>
+                            ) : filteredDishNames.map(name => (
+                              <button key={name} onClick={() => { setTrendDishes(prev => [...prev, name]); setTrendDropdownOpen(false); setTrendSearch(''); }}
+                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${isDinner ? `text-[#F4F1EA] ${rowHover}` : `text-[#2C2A28] ${rowHover}`}`}>
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {trendDishes.length > 0 && (
+                      <button onClick={() => setTrendDishes([])} className={`text-xs px-3 py-2 rounded-lg border transition-colors ${isDinner ? 'border-[#334155] text-rose-400 hover:bg-rose-950/20' : 'border-[#EAE5DA] text-rose-500 hover:bg-rose-50'}`}>
+                        Svuota
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {trendDishes.length > 0 && (() => {
+                const freqData = buildChartData('frequency');
+                const marginData = buildChartData('marginPct');
+                const scoreData = buildChartData('score');
+
+                const chartProps = {
+                  margin: { top: 5, right: 20, left: 0, bottom: 5 },
+                };
+                const axisProps = {
+                  tick: { fontSize: 11, fill: isDinner ? '#94A3B8' : '#8C8A85' },
+                  stroke: isDinner ? '#334155' : '#EAE5DA',
+                };
+                const gridProps = {
+                  strokeDasharray: '3 3',
+                  stroke: isDinner ? '#334155' : '#EAE5DA',
+                };
+                const tooltipStyle = {
+                  backgroundColor: isDinner ? '#1E293B' : '#fff',
+                  border: `1px solid ${isDinner ? '#334155' : '#EAE5DA'}`,
+                  borderRadius: 8,
+                  fontSize: 12,
+                  color: isDinner ? '#F4F1EA' : '#2C2A28',
+                };
+
+                return (
+                  <div className="space-y-6">
+                    {/* Grafico Frequenze */}
+                    <Card className={cardBg}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                          <TrendingUp className="w-4 h-4" /> Frequenze ordini
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart data={freqData} {...chartProps}>
+                            <CartesianGrid {...gridProps} />
+                            <XAxis dataKey="period" {...axisProps} />
+                            <YAxis {...axisProps} />
+                            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, name: string) => [`${v} ordini`, name]} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            {trendDishes.map((name, i) => (
+                              <Line key={name} type="monotone" dataKey={name} stroke={TREND_COLORS[i % TREND_COLORS.length]}
+                                strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Grafico Margine% */}
+                    <Card className={cardBg}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                          <BarChart2 className="w-4 h-4" /> Margine %
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart data={marginData} {...chartProps}>
+                            <CartesianGrid {...gridProps} />
+                            <XAxis dataKey="period" {...axisProps} />
+                            <YAxis unit="%" {...axisProps} />
+                            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, name: string) => [`${v}%`, name]} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            {trendDishes.map((name, i) => (
+                              <Line key={name} type="monotone" dataKey={name} stroke={TREND_COLORS[i % TREND_COLORS.length]}
+                                strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Grafico Score */}
+                    <Card className={cardBg}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                          <Zap className="w-4 h-4" /> Score (Margine% × Frequenza)
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart data={scoreData} {...chartProps}>
+                            <CartesianGrid {...gridProps} />
+                            <XAxis dataKey="period" {...axisProps} />
+                            <YAxis {...axisProps} />
+                            <Tooltip contentStyle={tooltipStyle} formatter={(v: any, name: string) => [v, name]} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            {trendDishes.map((name, i) => (
+                              <Line key={name} type="monotone" dataKey={name} stroke={TREND_COLORS[i % TREND_COLORS.length]}
+                                strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Correlazioni prezzo */}
+                    {correlations.filter(c => trendDishes.includes(c.dish)).length > 0 && (
+                      <Card className={cardBg}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                            <Zap className="w-4 h-4" /> Possibili correlazioni prezzo → frequenza
+                          </CardTitle>
+                          <p className={`text-xs ${mutedText}`}>Rilevate quando il prezzo è cambiato e la frequenza ha risposto in modo significativo nello stesso periodo.</p>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2">
+                            {correlations.filter(c => trendDishes.includes(c.dish)).map((c, i) => (
+                              <div key={i} className={`flex items-center gap-4 p-3 rounded-lg border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-semibold ${accentColor} truncate`}>{c.dish}</p>
+                                  <p className={`text-xs ${mutedText}`}>{c.periodA} → {c.periodB}</p>
+                                </div>
+                                <div className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.priceDiff < 0 ? (isDinner ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-600') : (isDinner ? 'bg-rose-900/30 text-rose-400' : 'bg-rose-50 text-rose-600')}`}>
+                                  Prezzo {c.priceDiff > 0 ? '+' : ''}{c.priceDiff.toFixed(2)}€
+                                </div>
+                                <div className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.freqDiff > 0 ? (isDinner ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-600') : (isDinner ? 'bg-rose-900/30 text-rose-400' : 'bg-rose-50 text-rose-600')}`}>
+                                  Ordini {c.freqDiff > 0 ? '+' : ''}{c.freqDiff}
+                                </div>
+                                <div className={`text-xs ${c.type === 'positive' ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : (isDinner ? 'text-amber-400' : 'text-amber-600')} font-semibold hidden sm:block`}>
+                                  {c.type === 'positive' ? '↔ correlazione attesa' : '↔ correlazione inversa'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
+          )}
         </div>
       )}
     </main>
