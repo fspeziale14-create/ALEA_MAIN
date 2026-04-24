@@ -244,7 +244,7 @@ export function MenuProfitability({
 
   // ── STATE ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'margini' | 'portfolio' | 'ingredienti' | 'frequenze'>('margini');
-  const [categoryFilter, setCategoryFilter] = useState<string>('Tutte');
+  const [categoryFilters, setCategoryFilters] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>('marginPct');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
@@ -486,8 +486,9 @@ export function MenuProfitability({
   );
 
   // ── FILTRO + SORT ─────────────────────────────────────────────
+  // categoryFilters vuoto = Tutte
   const filtered = allDishes.filter(d =>
-    categoryFilter === 'Tutte' || d.category === categoryFilter
+    categoryFilters.size === 0 || categoryFilters.has(d.category)
   );
 
   const sorted = [...filtered].sort((a, b) => {
@@ -626,7 +627,8 @@ export function MenuProfitability({
   };
 
   // ── STATISTICHE RIEPILOGATIVE ─────────────────────────────────
-  const dishesWithCost = allDishes.filter(d => !d.hasMissingCosts);
+  // KPI calcolati sui piatti filtrati (escluso costi mancanti che resta su tutti)
+  const dishesWithCost = filtered.filter(d => !d.hasMissingCosts);
   const avgFoodCost = dishesWithCost.length > 0
     ? dishesWithCost.reduce((s, d) => s + d.foodCostPct, 0) / dishesWithCost.length : 0;
   const avgMargin   = dishesWithCost.length > 0
@@ -1093,13 +1095,30 @@ export function MenuProfitability({
               { key: 'SHARING & KIDS MENU', label: 'Sharing & Kids' },
               { key: 'DOLCI & GELATO', label: 'Dolci & Gelato' },
               { key: 'COCKTAILS & BEVERAGE', label: 'Cocktails' },
-            ] as { key: string; label: string }[]).map(({ key, label }) => (
-              <button key={key} onClick={() => setCategoryFilter(key)}
+            ] as { key: string; label: string }[]).map(({ key, label }) => {
+              const isTutte = key === 'Tutte';
+              const isActive = isTutte
+                ? categoryFilters.size === 0
+                : categoryFilters.has(key);
+              return (
+                <button key={key} onClick={() => {
+                  if (isTutte) {
+                    setCategoryFilters(new Set());
+                  } else {
+                    setCategoryFilters(prev => {
+                      const next = new Set(prev);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    });
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  categoryFilter === key ? 'bg-[#967D62] text-white border-[#967D62]'
+                  isActive ? 'bg-[#967D62] text-white border-[#967D62]'
                     : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]')
                 }`}>{label}</button>
-            ))}
+              );
+            })}
           </div>
           {missingCount > 0 && (
             <div className={`flex items-start gap-3 p-3 rounded-lg border ${isDinner ? 'bg-amber-950/20 border-amber-800/40' : 'bg-amber-50 border-amber-200'}`}>
