@@ -91,6 +91,9 @@ type SortKey = 'name' | 'marginPct' | 'foodCostPct' | 'score' | 'frequency';
 type SortDir = 'asc' | 'desc';
 
 // ── IVA per categoria ────────────────────────────────────────────
+// Identifica le bevande per separarle dall'analisi food
+const isBeverageCategory = (category: string) => category === 'COCKTAILS & BEVERAGE';
+
 // COCKTAILS & BEVERAGE: alcolici 22%, resto 10%
 // Tutto il cibo: 10%
 const getIvaRate = (category: string): number => {
@@ -263,6 +266,8 @@ export function MenuProfitability({
   const [freqImportMsg, setFreqImportMsg] = useState<{ type: 'ok' | 'err' | 'info'; msg: string } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const freqInputRef = useRef<HTMLInputElement>(null);
+  const [bevPortfolioOpen, setBevPortfolioOpen] = useState(false);
+  const [bevRankingOpen, setBevRankingOpen] = useState(false);
 
   // ── PERIODO SELEZIONE & SNAPSHOT ─────────────────────────────
   const [periodStart, setPeriodStart] = useState<string | null>(null);
@@ -360,7 +365,7 @@ export function MenuProfitability({
       if (!userId) throw new Error('Utente non trovato');
 
       // Calcola mediane per quadranti
-      const dishesWithFreq = allDishes.filter(d => (d.frequency ?? 0) > 0 && !d.hasMissingCosts);
+      const dishesWithFreq = foodDishes.filter(d => (d.frequency ?? 0) > 0 && !d.hasMissingCosts);
       const freqs = dishesWithFreq.map(d => d.frequency ?? 0).sort((a, b) => a - b);
       const margins = dishesWithFreq.map(d => d.marginPct).sort((a, b) => a - b);
       const medianFreq = freqs.length ? freqs[Math.floor(freqs.length / 2)] : 0;
@@ -492,9 +497,13 @@ export function MenuProfitability({
       })
   );
 
+  // ── SPLIT FOOD / BEVANDE ─────────────────────────────────────
+  const foodDishes     = allDishes.filter(d => !isBeverageCategory(d.category));
+  const beverageDishes = allDishes.filter(d =>  isBeverageCategory(d.category));
+
   // ── FILTRO + SORT ─────────────────────────────────────────────
-  // categoryFilters vuoto = Tutte
-  const filtered = allDishes.filter(d =>
+  // categoryFilters vuoto = Tutte (solo food per i filtri standard)
+  const filtered = foodDishes.filter(d =>
     categoryFilters.size === 0 || categoryFilters.has(d.category)
   );
 
@@ -642,7 +651,7 @@ export function MenuProfitability({
     ? dishesWithCost.reduce((s, d) => s + d.marginPct, 0) / dishesWithCost.length : 0;
   const topDish     = [...dishesWithCost].sort((a, b) => b.marginPct - a.marginPct)[0];
   const topScore    = [...allDishes.filter(d => d.score != null)].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
-  const missingCount = allDishes.filter(d => d.hasMissingCosts).length;
+  const missingCount = foodDishes.filter(d => d.hasMissingCosts).length;
 
   // ── HELPER COLORI MARGINE ─────────────────────────────────────
   const marginColor = (pct: number) => {
@@ -879,15 +888,19 @@ export function MenuProfitability({
   };
 
   // ── RANKING TAB ───────────────────────────────────────────────
-  const rankingDishes = [...allDishes]
+  const rankingDishes = [...foodDishes]
+    .filter(d => d.score != null || d.frequency != null)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const rankingBeverages = [...beverageDishes]
     .filter(d => d.score != null || d.frequency != null)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   const maxScore = rankingDishes[0]?.score ?? 1;
 
   // ── QUADRANTI PORTFOLIO ───────────────────────────────────────
-  // Solo piatti con frequenza E margine calcolato
-  const portfolioDishes = allDishes.filter(d => d.frequency != null && !d.hasMissingCosts);
+  // Solo piatti FOOD con frequenza E margine calcolato (bevande separate)
+  const portfolioDishes = foodDishes.filter(d => d.frequency != null && !d.hasMissingCosts);
+  const beveragePortfolioDishes = beverageDishes.filter(d => d.frequency != null && !d.hasMissingCosts);
   const medianFreq = (() => {
     const sorted = [...portfolioDishes].sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0));
     if (sorted.length === 0) return 0;
@@ -931,6 +944,35 @@ export function MenuProfitability({
   const bubbleColors: Record<string, string> = {
     stelle: '#10b981', spingere: '#3b82f6', rivedere: '#f59e0b', valutare: '#ef4444'
   };
+
+  // Mediane e quadrante per bevande (calcolo separato)
+  const bevMedianFreq = (() => {
+    const sorted = [...beveragePortfolioDishes].sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0));
+    if (sorted.length === 0) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? ((sorted[mid-1].frequency! + sorted[mid].frequency!) / 2) : sorted[mid].frequency!;
+  })();
+  const bevMedianMargin = (() => {
+    const sorted = [...beveragePortfolioDishes].sort((a, b) => a.marginPct - b.marginPct);
+    if (sorted.length === 0) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? ((sorted[mid-1].marginPct + sorted[mid].marginPct) / 2) : sorted[mid].marginPct;
+  })();
+  const getBevQuadrant = (d: DishMargin): 'stelle' | 'spingere' | 'rivedere' | 'valutare' => {
+    const hiFreq = (d.frequency ?? 0) >= bevMedianFreq;
+    const hiMargin = d.marginPct >= bevMedianMargin;
+    if (hiFreq && hiMargin) return 'stelle';
+    if (!hiFreq && hiMargin) return 'spingere';
+    if (hiFreq && !hiMargin) return 'rivedere';
+    return 'valutare';
+  };
+  const bevBubbleData = beveragePortfolioDishes.map(d => ({
+    name: d.name, x: d.frequency ?? 0,
+    y: Math.round(d.marginPct * 10) / 10,
+    z: Math.max(d.score ?? 1, 1),
+    quadrant: getBevQuadrant(d),
+    marginNet: d.marginNet, ingredientCost: d.ingredientCost,
+  }));
 
   // ── ANALISI INGREDIENTI (piatti "da rivedere") ────────────────
   const rivisitaDishes = portfolioDishes.filter(d => getQuadrant(d) === 'rivedere');
@@ -1267,6 +1309,74 @@ export function MenuProfitability({
                 })}
               </div>
             </>
+          )}
+
+          {/* ── SEZIONE BEVANDE (collassabile) ── */}
+          {beveragePortfolioDishes.length > 0 && (
+            <div className={`rounded-xl border ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+              <button
+                onClick={() => setBevPortfolioOpen(v => !v)}
+                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-bold ${textColor}`}>🍹 Analisi Bevande</span>
+                  <span className={`text-xs ${mutedText}`}>Quadranti calcolati separatamente dal food</span>
+                </div>
+                {bevPortfolioOpen ? <ChevronUp className={`w-4 h-4 ${mutedText}`} /> : <ChevronDown className={`w-4 h-4 ${mutedText}`} />}
+              </button>
+              {bevPortfolioOpen && (
+                <div className={`px-5 pb-5 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'} pt-4 space-y-4`}>
+                  {/* Mini bubble chart per bevande */}
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDinner ? '#334155' : '#EAE5DA'} />
+                      <XAxis type="number" dataKey="x" name="Frequenza" label={{ value: 'Frequenza ordini', position: 'insideBottom', offset: -10, fill: isDinner ? '#94A3B8' : '#8C8A85', fontSize: 11 }} tick={{ fontSize: 11, fill: isDinner ? '#94A3B8' : '#8C8A85' }} />
+                      <YAxis type="number" dataKey="y" name="Margine%" unit="%" tick={{ fontSize: 11, fill: isDinner ? '#94A3B8' : '#8C8A85' }} />
+                      <ZAxis type="number" dataKey="z" range={[40, 400]} />
+                      <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => {
+                        if (!payload || !payload[0]) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div className={`px-3 py-2 rounded-lg border shadow text-xs ${isDinner ? 'bg-[#1E293B] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}>
+                            <p className="font-bold mb-1">{d.name}</p>
+                            <p>Frequenza: {d.x} | Margine: {d.y}%</p>
+                            <p className={quadrantMeta[d.quadrant as keyof typeof quadrantMeta]?.color}>{quadrantMeta[d.quadrant as keyof typeof quadrantMeta]?.label}</p>
+                          </div>
+                        );
+                      }} />
+                      <Scatter data={bevBubbleData} isAnimationActive={false}>
+                        {bevBubbleData.map((entry, index) => (
+                          <Cell key={index} fill={bubbleColors[entry.quadrant]} fillOpacity={0.8} />
+                        ))}
+                      </Scatter>
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                  {/* Quadranti bevande */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {(Object.entries(quadrantMeta) as [string, typeof quadrantMeta[keyof typeof quadrantMeta]][]).map(([key, meta]) => {
+                      const dishes = beveragePortfolioDishes.filter(d => getBevQuadrant(d) === key);
+                      if (dishes.length === 0) return null;
+                      return (
+                        <div key={key} className={`p-3 rounded-xl border ${meta.bg}`}>
+                          <p className={`text-xs font-bold ${meta.color} mb-2`}>{meta.icon} {meta.label} ({dishes.length})</p>
+                          <div className="space-y-1">
+                            {dishes.map(d => (
+                              <div key={d.name} className={`flex items-center justify-between text-xs px-2 py-1.5 rounded-lg ${isDinner ? 'bg-black/20' : 'bg-white/60'}`}>
+                                <span className={`font-medium truncate ${textColor}`}>{d.name}</span>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  <span className={mutedText}>{d.marginPct.toFixed(1)}%</span>
+                                  <span className={mutedText}>{d.frequency} ord.</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1705,6 +1815,61 @@ export function MenuProfitability({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── RANKING BEVANDE (collassabile) ── */}
+          {rankingBeverages.length > 0 && (
+            <div className={`rounded-xl border ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+              <button
+                onClick={() => setBevRankingOpen(v => !v)}
+                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-bold ${textColor}`}>🍹 Ranking Bevande</span>
+                  <span className={`text-xs ${mutedText}`}>Classifica separata dal food</span>
+                </div>
+                {bevRankingOpen ? <ChevronUp className={`w-4 h-4 ${mutedText}`} /> : <ChevronDown className={`w-4 h-4 ${mutedText}`} />}
+              </button>
+              {bevRankingOpen && (
+                <div className={`border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+                  <div className={`flex items-center justify-between px-5 py-2 text-xs font-bold uppercase tracking-wider ${mutedText}`}>
+                    <span>Bevanda</span>
+                    <span>Margine% × Frequenza</span>
+                  </div>
+                  {rankingBeverages.map((dish, idx) => {
+                    const maxBevScore = rankingBeverages[0]?.score ?? 1;
+                    const barW = maxBevScore > 0 ? ((dish.score ?? 0) / maxBevScore) * 100 : 0;
+                    return (
+                      <div key={dish.name} className={`flex items-center gap-4 px-5 py-3 border-t ${isDinner ? 'border-[#334155]/50' : 'border-[#EAE5DA]'}`}>
+                        <span className={`text-sm font-bold w-6 shrink-0 ${mutedText}`}>{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-sm font-semibold ${textColor} truncate`}>{dish.name}</span>
+                          </div>
+                          <div className={`h-1.5 rounded-full overflow-hidden ${isDinner ? 'bg-[#334155]' : 'bg-[#EAE5DA]'}`}>
+                            <div className="h-full rounded-full bg-[#967D62]" style={{ width: `${barW}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-right shrink-0">
+                          <div>
+                            <div className={`text-xs ${mutedText}`}>Margine</div>
+                            <div className={`text-sm font-semibold ${textColor}`}>{dish.marginPct.toFixed(1)}%</div>
+                          </div>
+                          <div>
+                            <div className={`text-xs ${mutedText}`}>Ordini</div>
+                            <div className={`text-sm font-semibold ${textColor}`}>{dish.frequency ?? '—'}</div>
+                          </div>
+                          <div>
+                            <div className={`text-xs ${mutedText}`}>Score</div>
+                            <div className={`text-base font-bold ${accent}`}>{dish.score != null ? dish.score.toFixed(0) : '—'}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
