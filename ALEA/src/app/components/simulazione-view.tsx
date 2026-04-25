@@ -99,7 +99,11 @@ export function SimulazioneView({
   const divider  = isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]';
   const rowHover = isDinner ? 'hover:bg-[#334155]/40' : 'hover:bg-[#F4F1EA]/60';
   const inputCls = isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]';
-  const sliderCls = `w-full h-1.5 rounded-full appearance-none cursor-pointer accent-[#967D62]`;
+  const sliderCls = `w-full h-2 rounded-full appearance-none cursor-pointer accent-[#967D62] ${
+    isDinner
+      ? '[&::-webkit-slider-runnable-track]:bg-[#475569] [&::-moz-range-track]:bg-[#475569]'
+      : '[&::-webkit-slider-runnable-track]:bg-[#C8C2B8] [&::-moz-range-track]:bg-[#C8C2B8]'
+  } [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:h-2`;
 
   // ── STATE ─────────────────────────────────────────────────────
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([]);
@@ -641,7 +645,7 @@ export function SimulazioneView({
                               </div>
                               <input type="range" min={Math.max(0.5, dish.priceNet * 0.5)} max={dish.priceNet * 2} step={0.1} value={sim.price}
                                 onChange={e => updateSim(dish.name, 'price', parseFloat(e.target.value))}
-                                className={`w-full h-1.5 rounded-full appearance-none cursor-pointer accent-[#967D62]`} />
+                                className={sliderCls} />
                               <div className={`flex justify-between text-[10px] ${mutedText} mt-0.5`}>
                                 <span>-50%</span><span className={accentColor}>Base: €{dish.priceNet.toFixed(2)}</span><span>+100%</span>
                               </div>
@@ -653,7 +657,7 @@ export function SimulazioneView({
                               </div>
                               <input type="range" min={0} max={Math.max(dish.frequency * 3, 10)} step={1} value={sim.frequency}
                                 onChange={e => updateSim(dish.name, 'frequency', parseInt(e.target.value))}
-                                className={`w-full h-1.5 rounded-full appearance-none cursor-pointer accent-[#967D62]`} />
+                                className={sliderCls} />
                               <div className={`flex justify-between text-[10px] ${mutedText} mt-0.5`}>
                                 <span>0</span><span className={accentColor}>Base: {dish.frequency}</span><span>×3</span>
                               </div>
