@@ -71,6 +71,12 @@ const quadrantColor = (q: string, isDinner: boolean) => {
   return isDinner ? 'text-rose-400' : 'text-rose-600';
 };
 
+const getDetailValue = (d: DishSnapshot, sort: 'score' | 'guadagno' | 'ricavo') => {
+  if (sort === 'score')    return d.score ?? 0;
+  if (sort === 'ricavo')   return d.priceNet * d.frequency;
+  return (d.priceNet - d.ingredientCost) * d.frequency;
+};
+
 const formatDate = (d: string) =>
   new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -87,6 +93,7 @@ export function StoricoView({
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailSort, setDetailSort] = useState<'score' | 'guadagno' | 'ricavo'>('score');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -587,17 +594,41 @@ export function StoricoView({
                     <div className="space-y-4 pt-4">
                       {/* Tabella piatti */}
                       <div className="space-y-1">
+                          {/* Selettore ordinamento */}
+                        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                          <span className={`text-xs font-bold uppercase tracking-wider ${mutedText}`}>Piatti food</span>
+                          <div className={`flex gap-1 p-0.5 rounded-lg border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
+                            {([
+                              { key: 'score',    label: 'Score' },
+                              { key: 'guadagno', label: 'Guadagno' },
+                              { key: 'ricavo',   label: 'Ricavo' },
+                            ] as const).map(opt => (
+                              <button key={opt.key} onClick={() => setDetailSort(opt.key)}
+                                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                                  detailSort === opt.key
+                                    ? (isDinner ? 'bg-[#967D62] text-white' : 'bg-white text-[#967D62] shadow-sm border border-[#EAE5DA]')
+                                    : `${mutedText} hover:text-[#967D62]`
+                                }`}
+                              >{opt.label}</button>
+                            ))}
+                          </div>
+                        </div>
                         <div className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 pb-2 border-b ${divider} text-xs font-bold uppercase tracking-wider ${mutedText}`}>
                           <span>Piatto</span>
                           <span className="text-right w-16">Margine</span>
                           <span className="text-right w-16">Ordini</span>
-                          <span className="text-right w-16">Score</span>
+                          <span className="text-right w-20">{detailSort === 'score' ? 'Score' : detailSort === 'guadagno' ? 'Guadagno' : 'Ricavo'}</span>
                           <span className="text-right w-24">Quadrante</span>
                         </div>
                         {dishes
                           .filter(d => !isBeverageCategory(d.category))
-                          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-                          .map(d => (
+                          .sort((a, b) => getDetailValue(b, detailSort) - getDetailValue(a, detailSort))
+                          .map(d => {
+                            const val = getDetailValue(d, detailSort);
+                            const valLabel = detailSort === 'score'
+                              ? (d.score != null ? d.score.toFixed(0) : '—')
+                              : `€${val.toFixed(0)}`;
+                            return (
                           <div key={d.name} className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
                             <div>
                               <p className={`text-sm font-medium ${textColor}`}>{d.name}</p>
@@ -607,10 +638,11 @@ export function StoricoView({
                               {d.hasMissingCosts ? '—' : `${d.marginPct.toFixed(1)}%`}
                             </p>
                             <p className={`text-sm font-bold text-right w-16 ${textColor}`}>{d.frequency > 0 ? d.frequency : '—'}</p>
-                            <p className={`text-sm font-bold text-right w-16 ${accentColor}`}>{d.score != null ? d.score.toFixed(0) : '—'}</p>
+                            <p className={`text-sm font-bold text-right w-20 ${accentColor}`}>{valLabel}</p>
                             <p className={`text-xs font-semibold text-right w-24 ${quadrantColor(d.quadrant, isDinner)}`}>{quadrantLabel[d.quadrant]}</p>
                           </div>
-                        ))}
+                            );
+                          })}
                       </div>
                       {/* Bevande nello storico — solo ranking frequenza */}
                       {dishes.some(d => isBeverageCategory(d.category)) && (
