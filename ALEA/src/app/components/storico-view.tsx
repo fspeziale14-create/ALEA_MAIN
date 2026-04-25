@@ -3,12 +3,12 @@
 // Visualizza snapshot salvati, confronto tra due periodi.
 // ================================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Trash2, GitCompare, ChevronDown, ChevronUp, X,
   TrendingUp, TrendingDown, Minus, Star, Target,
   ArrowUp, ArrowDown, BarChart2, Calendar, AlertCircle, Check,
-  Plus, LineChart as LineChartIcon, Zap
+  Plus, LineChart as LineChartIcon, Zap, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -55,6 +55,7 @@ interface StoricoViewProps {
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────
+const isBeverageCategory = (category: string) => category === 'COCKTAILS & BEVERAGE';
 
 const quadrantLabel: Record<string, string> = {
   stella: '⭐ Stella',
@@ -66,8 +67,8 @@ const quadrantLabel: Record<string, string> = {
 const quadrantColor = (q: string, isDinner: boolean) => {
   if (q === 'stella')   return isDinner ? 'text-amber-400' : 'text-amber-600';
   if (q === 'promuovi') return isDinner ? 'text-emerald-400' : 'text-emerald-600';
-  if (q === 'rivedi')   return isDinner ? 'text-rose-400' : 'text-rose-600';
-  return isDinner ? 'text-slate-400' : 'text-slate-500';
+  if (q === 'rivedi')   return isDinner ? 'text-slate-400' : 'text-slate-500';
+  return isDinner ? 'text-rose-400' : 'text-rose-600';
 };
 
 const formatDate = (d: string) =>
@@ -93,6 +94,8 @@ export function StoricoView({
   const [compareMode, setCompareMode] = useState(false);
   const [compareA, setCompareA] = useState<string | null>(null);
   const [compareB, setCompareB] = useState<string | null>(null);
+  const [compareDropA, setCompareDropA] = useState(false);
+  const [compareDropB, setCompareDropB] = useState(false);
 
   // Trend: piatti selezionati per i grafici
   const [trendDishes, setTrendDishes] = useState<string[]>([]);
@@ -227,6 +230,63 @@ export function StoricoView({
 
   const correlations = detectCorrelations();
 
+  // ── RILEVAMENTO TREND AUTOMATICO ────────────────────────────
+  // Prende gli ultimi N periodi cronologici (min 3) e trova piatti
+  // con tendenza monotona (sempre su o sempre giù) su almeno 3 periodi
+  const autoTrends = useMemo(() => {
+    if (chronoSnapshots.length < 3) return [];
+    // Ultimi N periodi (già in ordine cronologico)
+    const periods = chronoSnapshots;
+    const allNames = Array.from(new Set(periods.flatMap(s => s.data.dishes.map(d => d.name))));
+
+    const results: Array<{
+      name: string;
+      category: string;
+      metric: 'frequency' | 'marginPct' | 'ingredientCost';
+      metricLabel: string;
+      direction: 'up' | 'down';
+      values: Array<{ period: string; value: number }>;
+      pctChange: number;
+    }> = [];
+
+    allNames.forEach(name => {
+      const series = periods.map(s => {
+        const d = s.data.dishes.find(dd => dd.name === name);
+        return d ? { period: s.label, frequency: d.frequency, marginPct: d.marginPct, ingredientCost: d.ingredientCost } : null;
+      }).filter(Boolean) as Array<{ period: string; frequency: number; marginPct: number; ingredientCost: number }>;
+
+      if (series.length < 3) return;
+      const cat = periods[0].data.dishes.find(d => d.name === name)?.category ?? '';
+
+      (['frequency', 'marginPct', 'ingredientCost'] as const).forEach(metric => {
+        const metricLabels = { frequency: 'frequenza ordini', marginPct: 'margine %', ingredientCost: 'costo ingredienti' };
+        const vals = series.map(s => ({ period: s.period, value: s[metric] }));
+        // Controlla se monotonamente crescente o decrescente
+        let alwaysUp = true, alwaysDown = true;
+        for (let i = 1; i < vals.length; i++) {
+          if (vals[i].value <= vals[i-1].value) alwaysUp = false;
+          if (vals[i].value >= vals[i-1].value) alwaysDown = false;
+        }
+        if (!alwaysUp && !alwaysDown) return;
+        // Solo se la variazione totale è significativa
+        const first = vals[0].value, last = vals[vals.length-1].value;
+        if (first === 0) return;
+        const pctChange = ((last - first) / Math.abs(first)) * 100;
+        if (Math.abs(pctChange) < 5) return; // ignora variazioni minime
+        results.push({
+          name, category: cat,
+          metric, metricLabel: metricLabels[metric],
+          direction: alwaysUp ? 'up' : 'down',
+          values: vals,
+          pctChange,
+        });
+      });
+    });
+
+    // Ordina per variazione % assoluta decrescente
+    return results.sort((a, b) => Math.abs(b.pctChange) - Math.abs(a.pctChange));
+  }, [chronoSnapshots]);
+
   // Nomi filtrati per dropdown trend
   const filteredDishNames = allDishNames.filter(n =>
     n.toLowerCase().includes(trendSearch.toLowerCase()) && !trendDishes.includes(n)
@@ -278,33 +338,78 @@ export function StoricoView({
       {/* ── SELEZIONE CONFRONTO ── */}
       {activeTab === 'confronto' && (
         <Card className={cardBg}>
-          <CardContent className="pt-5">
-            <p className={`text-sm font-semibold ${textColor} mb-3`}>
+          <CardContent className="pt-5 space-y-4">
+            <p className={`text-sm font-semibold ${textColor}`}>
               Seleziona due periodi da confrontare — il primo è il riferimento (A), il secondo è quello più recente (B).
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {(['A', 'B'] as const).map(side => {
-                const selectedId = side === 'A' ? compareA : compareB;
-                const otherId = side === 'A' ? compareB : compareA;
-                return (
-                  <div key={side}>
-                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${accentColor}`}>Periodo {side}</p>
-                    <select
-                      value={selectedId ?? ''}
-                      onChange={e => side === 'A' ? setCompareA(e.target.value || null) : setCompareB(e.target.value || null)}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
-                    >
-                      <option value="">— Seleziona —</option>
-                      {snapshots.map(s => (
-                        <option key={s.id} value={s.id} disabled={s.id === otherId}>
-                          {s.label} ({formatDate(s.period_start)} → {formatDate(s.period_end)})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              })}
-            </div>
+            {snapshots.length < 2 ? (
+              <p className={`text-sm ${mutedText}`}>Servono almeno 2 periodi salvati per il confronto.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {(['A', 'B'] as const).map(side => {
+                    const selectedId = side === 'A' ? compareA : compareB;
+                    const otherId = side === 'A' ? compareB : compareA;
+                    const selected = snapshots.find(s => s.id === selectedId);
+                    const [openDrop, setOpenDrop] = [
+                      side === 'A' ? compareDropA : compareDropB,
+                      side === 'A' ? setCompareDropA : setCompareDropB,
+                    ];
+                    return (
+                      <div key={side} className="relative">
+                        <p className={`text-xs font-bold uppercase tracking-wider mb-2 ${accentColor}`}>Periodo {side}</p>
+                        <button
+                          onClick={() => setOpenDrop(!openDrop)}
+                          className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                            selected
+                              ? (isDinner ? 'border-[#967D62]/60 bg-[#967D62]/10 text-[#F4F1EA]' : 'border-[#967D62]/60 bg-[#967D62]/5 text-[#2C2A28]')
+                              : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/40' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/40')
+                          }`}
+                        >
+                          <span className="truncate">{selected ? `${selected.label} (${formatDate(selected.period_start)} → ${formatDate(selected.period_end)})` : '— Seleziona —'}</span>
+                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${openDrop ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openDrop && (
+                          <div className={`absolute z-50 mt-1 w-full rounded-xl border shadow-xl overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}>
+                            {snapshots.map(s => {
+                              const isOther = s.id === otherId;
+                              return (
+                                <button
+                                  key={s.id}
+                                  disabled={isOther}
+                                  onClick={() => {
+                                    side === 'A' ? setCompareA(s.id) : setCompareB(s.id);
+                                    setOpenDrop(false);
+                                  }}
+                                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                                    isOther ? `opacity-30 cursor-not-allowed ${mutedText}` :
+                                    s.id === selectedId ? (isDinner ? 'bg-[#967D62]/20 text-[#F4F1EA]' : 'bg-[#967D62]/10 text-[#967D62]') :
+                                    (isDinner ? `text-[#F4F1EA] ${rowHover}` : `text-[#2C2A28] ${rowHover}`)
+                                  }`}
+                                >
+                                  <span className="font-semibold">{s.label}</span>
+                                  <span className={`ml-2 text-xs ${mutedText}`}>{formatDate(s.period_start)} → {formatDate(s.period_end)}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  disabled={!compareA || !compareB}
+                  onClick={() => { setCompareDropA(false); setCompareDropB(false); }}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    isDinner ? 'bg-[#967D62] hover:bg-[#7A654E] text-white' : 'bg-[#967D62] hover:bg-[#7A654E] text-white'
+                  }`}
+                >
+                  <GitCompare className="w-4 h-4" />
+                  Confronta periodi
+                </button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -451,7 +556,7 @@ export function StoricoView({
                   <div className="hidden sm:flex items-center gap-2 shrink-0">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isDinner ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>⭐ {stelle.length}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isDinner ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>📣 {promuovi.length}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isDinner ? 'bg-rose-900/30 text-rose-400' : 'bg-rose-50 text-rose-600'}`}>🔍 {rivedi.length}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isDinner ? 'bg-slate-700/40 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>🔍 {rivedi.length}</span>
                   </div>
                   {/* Tasto elimina */}
                   <button
@@ -491,6 +596,7 @@ export function StoricoView({
                           <span className="text-right w-24">Quadrante</span>
                         </div>
                         {dishes
+                          .filter(d => !isBeverageCategory(d.category))
                           .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
                           .map(d => (
                           <div key={d.name} className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
@@ -507,6 +613,28 @@ export function StoricoView({
                           </div>
                         ))}
                       </div>
+                      {/* Bevande nello storico */}
+                      {dishes.some(d => isBeverageCategory(d.category)) && (
+                        <div className={`mt-4 pt-3 border-t ${divider}`}>
+                          <p className={`text-xs font-bold uppercase tracking-wider ${mutedText} mb-2`}>🍹 Bevande</p>
+                          {dishes
+                            .filter(d => isBeverageCategory(d.category))
+                            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+                            .map(d => (
+                            <div key={d.name} className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
+                              <div>
+                                <p className={`text-sm font-medium ${textColor}`}>{d.name}</p>
+                              </div>
+                              <p className={`text-sm font-bold text-right w-16 ${d.hasMissingCosts ? mutedText : d.marginPct >= 60 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : accentColor}`}>
+                                {d.hasMissingCosts ? '—' : `${d.marginPct.toFixed(1)}%`}
+                              </p>
+                              <p className={`text-sm font-bold text-right w-16 ${textColor}`}>{d.frequency > 0 ? d.frequency : '—'}</p>
+                              <p className={`text-sm font-bold text-right w-16 ${accentColor}`}>{d.score != null ? d.score.toFixed(0) : '—'}</p>
+                              <p className={`text-xs ${mutedText} text-right w-24`}>bevanda</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 )}
@@ -526,6 +654,66 @@ export function StoricoView({
             </div>
           ) : (
             <>
+              {/* Trend automatici rilevati */}
+              {autoTrends.length > 0 && (
+                <Card className={cardBg}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                      <TrendingUp className="w-4 h-4" /> Tendenze rilevate automaticamente
+                    </CardTitle>
+                    <p className={`text-xs ${mutedText}`}>
+                      Piatti con variazione monotona (sempre in crescita o sempre in calo) su tutti i {chronoSnapshots.length} periodi analizzati.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {autoTrends.map((t, i) => {
+                        const isUp = t.direction === 'up';
+                        const isGoodUp = t.metric === 'marginPct' || t.metric === 'frequency';
+                        const isPositive = isUp ? isGoodUp : !isGoodUp;
+                        const color = isPositive
+                          ? (isDinner ? 'text-emerald-400' : 'text-emerald-600')
+                          : (isDinner ? 'text-rose-400' : 'text-rose-600');
+                        const bg = isPositive
+                          ? (isDinner ? 'bg-emerald-950/20 border-emerald-800/30' : 'bg-emerald-50 border-emerald-100')
+                          : (isDinner ? 'bg-rose-950/20 border-rose-800/30' : 'bg-rose-50 border-rose-100');
+                        const Icon = isUp ? TrendingUp : TrendingDown;
+                        return (
+                          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${bg}`}>
+                            <Icon className={`w-4 h-4 shrink-0 ${color}`} />
+                            <div className="flex-1 min-w-0">
+                              <span className={`font-semibold text-sm ${textColor}`}>{t.name}</span>
+                              <span className={`text-xs ml-2 ${mutedText}`}>{t.category}</span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className={`text-xs font-semibold ${color}`}>
+                                {isUp ? '▲' : '▼'} {t.metricLabel}
+                              </p>
+                              <p className={`text-xs ${mutedText}`}>
+                                {t.pctChange > 0 ? '+' : ''}{t.pctChange.toFixed(1)}% su {t.values.length} periodi
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (!trendDishes.includes(t.name) && trendDishes.length < 10) {
+                                  setTrendDishes(prev => [...prev, t.name]);
+                                }
+                              }}
+                              disabled={trendDishes.includes(t.name)}
+                              className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
+                                isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/60 hover:text-[#C4A882]' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/60 hover:text-[#967D62]'
+                              }`}
+                            >
+                              + Grafico
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Selettore piatti */}
               <Card className={cardBg}>
                 <CardContent className="pt-5">
