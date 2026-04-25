@@ -99,11 +99,11 @@ export function SimulazioneView({
   const divider  = isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]';
   const rowHover = isDinner ? 'hover:bg-[#334155]/40' : 'hover:bg-[#F4F1EA]/60';
   const inputCls = isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]';
-  const sliderCls = `w-full h-2 rounded-full appearance-none cursor-pointer accent-[#967D62] ${
+  const sliderCls = `w-full appearance-none cursor-pointer accent-[#967D62] h-1 ${
     isDinner
       ? '[&::-webkit-slider-runnable-track]:bg-[#475569] [&::-moz-range-track]:bg-[#475569]'
-      : '[&::-webkit-slider-runnable-track]:bg-[#C8C2B8] [&::-moz-range-track]:bg-[#C8C2B8]'
-  } [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:h-2`;
+      : '[&::-webkit-slider-runnable-track]:bg-[#B8B2A8] [&::-moz-range-track]:bg-[#B8B2A8]'
+  } [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:h-1 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-[#967D62] [&::-webkit-slider-thumb]:shadow-sm`;
 
   // ── STATE ─────────────────────────────────────────────────────
   const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([]);
