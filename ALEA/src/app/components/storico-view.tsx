@@ -231,12 +231,11 @@ export function StoricoView({
   const correlations = detectCorrelations();
 
   // ── RILEVAMENTO TREND AUTOMATICO ────────────────────────────
-  // Prende gli ultimi N periodi cronologici (min 3) e trova piatti
-  // con tendenza monotona (sempre su o sempre giù) su almeno 3 periodi
+  // Usa solo gli ultimi 3 periodi — più realistico e azionabile
   const autoTrends = useMemo(() => {
     if (chronoSnapshots.length < 3) return [];
-    // Ultimi N periodi (già in ordine cronologico)
-    const periods = chronoSnapshots;
+    // Solo gli ultimi 3 periodi cronologici
+    const periods = chronoSnapshots.slice(-3);
     const allNames = Array.from(new Set(periods.flatMap(s => s.data.dishes.map(d => d.name))));
 
     const results: Array<{
@@ -613,26 +612,31 @@ export function StoricoView({
                           </div>
                         ))}
                       </div>
-                      {/* Bevande nello storico */}
+                      {/* Bevande nello storico — solo ranking frequenza */}
                       {dishes.some(d => isBeverageCategory(d.category)) && (
                         <div className={`mt-4 pt-3 border-t ${divider}`}>
-                          <p className={`text-xs font-bold uppercase tracking-wider ${mutedText} mb-2`}>🍹 Bevande</p>
+                          <p className={`text-xs font-bold uppercase tracking-wider ${mutedText} mb-2`}>🍹 Frequenze Bevande</p>
                           {dishes
                             .filter(d => isBeverageCategory(d.category))
-                            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-                            .map(d => (
-                            <div key={d.name} className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
-                              <div>
-                                <p className={`text-sm font-medium ${textColor}`}>{d.name}</p>
-                              </div>
-                              <p className={`text-sm font-bold text-right w-16 ${d.hasMissingCosts ? mutedText : d.marginPct >= 60 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : accentColor}`}>
-                                {d.hasMissingCosts ? '—' : `${d.marginPct.toFixed(1)}%`}
-                              </p>
-                              <p className={`text-sm font-bold text-right w-16 ${textColor}`}>{d.frequency > 0 ? d.frequency : '—'}</p>
-                              <p className={`text-sm font-bold text-right w-16 ${accentColor}`}>{d.score != null ? d.score.toFixed(0) : '—'}</p>
-                              <p className={`text-xs ${mutedText} text-right w-24`}>bevanda</p>
-                            </div>
-                          ))}
+                            .sort((a, b) => b.frequency - a.frequency)
+                            .map((d, idx) => {
+                              const maxFreq = dishes.filter(x => isBeverageCategory(x.category)).reduce((m, x) => Math.max(m, x.frequency), 1);
+                              const barW = (d.frequency / maxFreq) * 100;
+                              return (
+                                <div key={d.name} className="flex items-center gap-3 py-1.5 px-1">
+                                  <span className={`text-xs w-5 shrink-0 font-bold ${mutedText}`}>{idx + 1}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                      <span className={`text-sm font-medium truncate ${textColor}`}>{d.name}</span>
+                                      <span className={`text-sm font-bold shrink-0 ml-2 ${textColor}`}>{d.frequency > 0 ? d.frequency : '—'}</span>
+                                    </div>
+                                    <div className={`h-1 rounded-full overflow-hidden ${isDinner ? 'bg-[#334155]' : 'bg-[#EAE5DA]'}`}>
+                                      <div className="h-full rounded-full bg-[#967D62]/60" style={{ width: `${barW}%` }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                         </div>
                       )}
                     </div>
@@ -662,7 +666,7 @@ export function StoricoView({
                       <TrendingUp className="w-4 h-4" /> Tendenze rilevate automaticamente
                     </CardTitle>
                     <p className={`text-xs ${mutedText}`}>
-                      Piatti con variazione monotona (sempre in crescita o sempre in calo) su tutti i {chronoSnapshots.length} periodi analizzati.
+                      Piatti con variazione costante negli ultimi 3 periodi. Aggiornato ad ogni nuovo periodo salvato.
                     </p>
                   </CardHeader>
                   <CardContent>
