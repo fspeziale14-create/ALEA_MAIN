@@ -1767,34 +1767,47 @@ export function MenuProfitability({
             </div>
           )}
 
-          {/* ── FREQUENZE BEVANDE (collassabile) ── */}
-          {beverageByFreq.length > 0 && (
+          {/* ── BEVANDE: ranking con score (coerente con la sezione frequenze) ── */}
+          {rankingBeverages.length > 0 && (
             <div className={`rounded-xl border ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
               <button
                 onClick={() => setBevRankingOpen(v => !v)}
                 className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
               >
                 <div className="flex items-center gap-3">
-                  <span className={`text-sm font-bold ${textColor}`}>🍹 Frequenze Bevande</span>
-                  <span className={`text-xs ${mutedText}`}>Ranking per volume ordini</span>
+                  <span className={`text-sm font-bold ${textColor}`}>🍹 Bevande</span>
+                  <span className={`text-xs ${mutedText}`}>Margine% × Frequenza</span>
                 </div>
                 {bevRankingOpen ? <ChevronUp className={`w-4 h-4 ${mutedText}`} /> : <ChevronDown className={`w-4 h-4 ${mutedText}`} />}
               </button>
               {bevRankingOpen && (
                 <div className={`border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
-                  {beverageByFreq.map((d, idx) => {
-                    const maxFreq = beverageByFreq[0]?.frequency ?? 1;
-                    const barW = maxFreq > 0 ? ((d.frequency ?? 0) / maxFreq) * 100 : 0;
+                  {rankingBeverages.map((dish, idx) => {
+                    const maxBevScore = rankingBeverages[0]?.score ?? 1;
+                    const barW = maxBevScore > 0 ? ((dish.score ?? 0) / maxBevScore) * 100 : 0;
                     return (
-                      <div key={d.name} className={`flex items-center gap-4 px-5 py-3 border-t ${isDinner ? 'border-[#334155]/50' : 'border-[#EAE5DA]'}`}>
+                      <div key={dish.name} className={`flex items-center gap-4 px-5 py-3 border-t ${isDinner ? 'border-[#334155]/50' : 'border-[#EAE5DA]'}`}>
                         <span className={`text-sm font-bold w-6 shrink-0 ${mutedText}`}>{idx + 1}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <span className={`text-sm font-semibold truncate ${textColor}`}>{d.name}</span>
-                            <span className={`text-sm font-bold shrink-0 ml-2 ${textColor}`}>{d.frequency} ordini</span>
+                            <span className={`text-sm font-semibold truncate ${textColor}`}>{dish.name}</span>
                           </div>
                           <div className={`h-1.5 rounded-full overflow-hidden ${isDinner ? 'bg-[#334155]' : 'bg-[#EAE5DA]'}`}>
                             <div className="h-full rounded-full bg-[#967D62]" style={{ width: `${barW}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-right shrink-0">
+                          <div>
+                            <div className={`text-xs ${mutedText}`}>Margine</div>
+                            <div className={`text-sm font-semibold ${textColor}`}>{dish.marginPct.toFixed(1)}%</div>
+                          </div>
+                          <div>
+                            <div className={`text-xs ${mutedText}`}>Ordini</div>
+                            <div className={`text-sm font-semibold ${textColor}`}>{dish.frequency ?? '—'}</div>
+                          </div>
+                          <div>
+                            <div className={`text-xs ${mutedText}`}>Score</div>
+                            <div className={`text-base font-bold ${accent}`}>{dish.score != null ? dish.score.toFixed(0) : '—'}</div>
                           </div>
                         </div>
                       </div>
