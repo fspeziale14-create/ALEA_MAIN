@@ -825,12 +825,12 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                             <div className="pt-2 space-y-2">
                                                 <Button
                                                     onClick={() => { setShowExtraModal(true); setExtraMsg(null); setExtraIngId(''); setExtraQty(''); setExtraNote(''); setExtraDate(new Date().toISOString().split('T')[0]); setExtraCategory('waste'); }}
-                                                    variant="outline"
-                                                    className={`w-full ${isDinner ? 'border-[#7A4F3A] text-[#C4A882] hover:bg-[#7A4F3A]/20' : 'border-[#C4A882] text-[#7A4F3A] hover:bg-[#967D62]/5'}`}
+                                                    variant="ghost"
+                                                    className={`w-full font-semibold ${isDinner ? 'text-[#C4A882] hover:bg-[#334155]/40' : 'text-[#7A4F3A] hover:bg-[#967D62]/5'}`}
                                                 >
                                                     <Flame className="w-4 h-4 mr-2" /> Registra consumo extra
                                                 </Button>
-                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); }} variant="outline" className={`w-full ${isDinner ? 'border-[#334155] text-[#F4F1EA] hover:bg-[#334155]' : 'border-[#EAE5DA] hover:bg-gray-50'}`}>
+                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); }} variant="ghost" className={`w-full font-semibold ${isDinner ? 'text-[#C4A882] hover:bg-[#334155]/40' : 'text-[#7A4F3A] hover:bg-[#967D62]/5'}`}>
                                                     <CheckCircle2 className="w-4 h-4 mr-2" /> Verifica Quantità
                                                 </Button>
                                             </div>
