@@ -4,7 +4,8 @@ import {
   Users, CalendarRange, Boxes, ClipboardList, CookingPot,
   Plus, X, Check, Pencil, BookOpen, ChevronDown, ChevronUp, ChevronRight, ArrowLeft,
   Loader2, CalendarDays, LayoutGrid, CheckCircle2,
-  ChefHat, Moon, Settings2, Sun, TrendingUp, AlertCircle, Upload
+  ChefHat, Moon, Settings2, Sun, TrendingUp, AlertCircle, Upload,
+  Flame, Trash2, UtensilsCrossed, Wrench, HelpCircle
 } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
@@ -83,6 +84,8 @@ interface PianificazioneViewProps {
   menuPrices: Record<string, number>;
   setMenuPrices: (fn: any) => void;
   saveMenuPrice: (dishName: string, price: number) => Promise<void>;
+  supabase: any;
+  isLoggedIn: boolean;
 }
 
 export function PianificazioneView(props: PianificazioneViewProps) {
@@ -108,6 +111,8 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   const menuPrices = p.menuPrices;
   const setMenuPrices = p.setMenuPrices;
   const saveMenuPrice = p.saveMenuPrice;
+  const supabase = p.supabase;
+  const isLoggedIn = p.isLoggedIn;
   const newIngName = p.newIngName; const setNewIngName = p.setNewIngName;
   const newIngUnit = p.newIngUnit; const setNewIngUnit = p.setNewIngUnit;
   const newIngIdeal = p.newIngIdeal; const setNewIngIdeal = p.setNewIngIdeal;
@@ -164,6 +169,64 @@ export function PianificazioneView(props: PianificazioneViewProps) {
 
   // State per editing prezzo piatto
   const [editingPriceDish, setEditingPriceDish] = React.useState<string | null>(null);
+
+  // ── MODALE CONSUMI EXTRA ──────────────────────────────────────
+  const [showExtraModal, setShowExtraModal] = React.useState(false);
+  const [extraIngId, setExtraIngId] = React.useState<string>('');
+  const [extraQty, setExtraQty] = React.useState<string>('');
+  const [extraCategory, setExtraCategory] = React.useState<'waste' | 'personale' | 'operativo' | 'altro'>('waste');
+  const [extraNote, setExtraNote] = React.useState<string>('');
+  const [extraDate, setExtraDate] = React.useState<string>(new Date().toISOString().split('T')[0]);
+  const [extraSaving, setExtraSaving] = React.useState(false);
+  const [extraMsg, setExtraMsg] = React.useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+
+  const extraCategories = [
+    { key: 'waste' as const,      label: 'Scarto',             icon: Trash2,          color: 'text-rose-500' },
+    { key: 'personale' as const,  label: 'Pasto personale',    icon: UtensilsCrossed, color: 'text-amber-500' },
+    { key: 'operativo' as const,  label: 'Consumo operativo',  icon: Flame,           color: 'text-orange-500' },
+    { key: 'altro' as const,      label: 'Altro',              icon: HelpCircle,      color: 'text-slate-500' },
+  ];
+
+  const handleSaveExtra = async () => {
+    if (!extraIngId || !extraQty || Number(extraQty) <= 0) return;
+    setExtraSaving(true);
+    setExtraMsg(null);
+    try {
+      const ing = ingredients.find((i: any) => i.id === extraIngId);
+      if (!ing) throw new Error('Ingrediente non trovato');
+      const qty = Number(extraQty);
+      // Scala currentQty
+      setIngredients((prev: any[]) => prev.map((i: any) =>
+        i.id === extraIngId ? { ...i, currentQty: Math.max(0, (i.currentQty ?? 0) - qty) } : i
+      ));
+      // Salva su Supabase se loggato
+      if (isLoggedIn && supabase) {
+        const userId = (await supabase.auth.getUser()).data.user?.id;
+        if (userId) {
+          await supabase.from('extra_consumption').insert({
+            user_id: userId,
+            ingredient_id: ing.id,
+            ingredient_name: ing.name,
+            qty,
+            unit: ing.unit,
+            category: extraCategory,
+            note: extraNote.trim() || null,
+            recorded_at: extraDate,
+          });
+        }
+      }
+      setExtraMsg({ type: 'ok', msg: `Registrato: −${qty}${ing.unit} di ${ing.name}.` });
+      setExtraQty('');
+      setExtraNote('');
+    } catch (err: any) {
+      setExtraMsg({ type: 'err', msg: `Errore: ${err.message}` });
+    } finally {
+      setExtraSaving(false);
+    }
+  };
+
+  // Converti showVerifyForm in modale
+  const [showVerifyModal, setShowVerifyModal] = React.useState(false);
   const [editingPriceValue, setEditingPriceValue] = React.useState<string>('');
 
   // MCM tra due interi
@@ -492,6 +555,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   };
 
   return (
+    <>
              <main className="flex-1 p-6 md:p-8 max-w-6xl mx-auto w-full">
                 <div className="space-y-6">
                     {!hideHeader && (
@@ -756,35 +820,19 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                             </div>
                                         )}
 
-                                        {/* Verifica Quantità */}
+                                        {/* Registra consumo + Verifica Quantità */}
                                         {ingredients.length > 0 && (
-                                            <div className="pt-2">
-                                                <Button onClick={() => { setShowVerifyForm(v => !v); setVerifyValues({}); }} variant="outline" className={`w-full ${isDinner ? 'border-[#334155] text-[#F4F1EA] hover:bg-[#334155]' : 'border-[#EAE5DA] hover:bg-gray-50'}`}>
+                                            <div className="pt-2 space-y-2">
+                                                <Button
+                                                    onClick={() => { setShowExtraModal(true); setExtraMsg(null); setExtraIngId(''); setExtraQty(''); setExtraNote(''); setExtraDate(new Date().toISOString().split('T')[0]); setExtraCategory('waste'); }}
+                                                    variant="outline"
+                                                    className={`w-full ${isDinner ? 'border-[#7A4F3A] text-[#C4A882] hover:bg-[#7A4F3A]/20' : 'border-[#C4A882] text-[#7A4F3A] hover:bg-[#967D62]/5'}`}
+                                                >
+                                                    <Flame className="w-4 h-4 mr-2" /> Registra consumo extra
+                                                </Button>
+                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); }} variant="outline" className={`w-full ${isDinner ? 'border-[#334155] text-[#F4F1EA] hover:bg-[#334155]' : 'border-[#EAE5DA] hover:bg-gray-50'}`}>
                                                     <CheckCircle2 className="w-4 h-4 mr-2" /> Verifica Quantità
                                                 </Button>
-                                                {showVerifyForm && (
-                                                    <div className={`mt-3 p-4 rounded-xl border space-y-3 ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
-                                                        <h4 className={`text-xs font-bold uppercase tracking-wider ${mutedText}`}>Inserisci le quantità reali trovate</h4>
-                                                        {ingredients.map(ing => (
-                                                            <div key={ing.id} className="flex items-center gap-3">
-                                                                <span className={`flex-1 text-sm ${textColor}`}>{ing.name}</span>
-                                                                <Input type="number" placeholder={`${ing.currentQty}`} value={verifyValues[ing.id] || ''} onChange={e => setVerifyValues(prev => ({ ...prev, [ing.id]: e.target.value }))} className={`w-28 text-right ${isDinner ? 'border-[#334155] bg-[#1E293B]' : 'border-[#EAE5DA]'}`} />
-                                                                <span className={`text-xs w-6 ${mutedText}`}>{ing.unit}</span>
-                                                            </div>
-                                                        ))}
-                                                        <Button onClick={() => {
-                                                            setIngredients(prev => prev.map(ing => {
-                                                                const real = verifyValues[ing.id];
-                                                                if (real === undefined || real === '') return ing;
-                                                                return { ...ing, currentQty: Number(real) };
-                                                            }));
-                                                            setShowVerifyForm(false);
-                                                            setVerifyValues({});
-                                                        }} className="w-full bg-[#967D62] hover:bg-[#7A654E] text-white">
-                                                            Salva Verifica
-                                                        </Button>
-                                                    </div>
-                                                )}
                                             </div>
                                         )}
 
@@ -1601,5 +1649,197 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                 </div>
                 )}
              </main>
+
+      {/* ════════════════════════════════════════════════════════
+          MODALE — REGISTRA CONSUMO EXTRA
+      ════════════════════════════════════════════════════════ */}
+      {showExtraModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowExtraModal(false)}>
+          {/* Overlay */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          {/* Pannello */}
+          <div
+            className={`relative w-full max-w-lg rounded-2xl shadow-2xl border overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className={`flex items-center justify-between px-6 py-4 border-b ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+              <div>
+                <h2 className={`text-lg font-bold ${textColor}`}>Registra consumo extra</h2>
+                <p className={`text-xs mt-0.5 ${mutedText}`}>Scarti, pasti personale, consumi operativi. Scala la giacenza automaticamente.</p>
+              </div>
+              <button onClick={() => setShowExtraModal(false)} className={`p-1.5 rounded-lg transition-colors ${isDinner ? 'hover:bg-[#334155] text-[#94A3B8]' : 'hover:bg-gray-100 text-[#8C8A85]'}`}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-5">
+
+              {/* Selezione ingrediente */}
+              <div>
+                <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Ingrediente</Label>
+                <select
+                  value={extraIngId}
+                  onChange={e => setExtraIngId(e.target.value)}
+                  className={`w-full px-3 py-2.5 rounded-xl border text-sm ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
+                >
+                  <option value="">— Seleziona ingrediente —</option>
+                  {[...ingredients].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((ing: any) => (
+                    <option key={ing.id} value={ing.id}>{ing.name} (giacenza: {ing.currentQty}{ing.unit})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quantità + data */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>
+                    Quantità {extraIngId ? `(${ingredients.find((i: any) => i.id === extraIngId)?.unit ?? ''})` : ''}
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={extraQty}
+                    onChange={e => setExtraQty(e.target.value)}
+                    placeholder="Es. 0.5"
+                    className={`${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
+                  />
+                </div>
+                <div>
+                  <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Data</Label>
+                  <Input
+                    type="date"
+                    value={extraDate}
+                    onChange={e => setExtraDate(e.target.value)}
+                    className={`${isDinner ? 'border-[#334155] bg-[#0F172A] [color-scheme:dark]' : 'border-[#EAE5DA]'}`}
+                  />
+                </div>
+              </div>
+
+              {/* Categoria */}
+              <div>
+                <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Categoria</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {extraCategories.map(cat => {
+                    const Icon = cat.icon;
+                    return (
+                      <button
+                        key={cat.key}
+                        onClick={() => setExtraCategory(cat.key)}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                          extraCategory === cat.key
+                            ? 'bg-[#967D62] text-white border-[#967D62]'
+                            : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/40' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/40')
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 ${extraCategory === cat.key ? 'text-white' : cat.color}`} />
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Nota */}
+              <div>
+                <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Nota (opzionale)</Label>
+                <Input
+                  value={extraNote}
+                  onChange={e => setExtraNote(e.target.value)}
+                  placeholder="Es. Contenitore caduto, pasto chef…"
+                  className={`${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
+                />
+              </div>
+
+              {/* Feedback */}
+              {extraMsg && (
+                <div className={`flex items-center gap-2 p-3 rounded-lg text-xs font-medium ${
+                  extraMsg.type === 'ok'
+                    ? (isDinner ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+                    : (isDinner ? 'bg-rose-950/30 text-rose-400 border border-rose-800/40' : 'bg-rose-50 text-rose-700 border border-rose-200')
+                }`}>
+                  {extraMsg.type === 'ok' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {extraMsg.msg}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className={`flex gap-3 px-6 py-4 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+              <Button onClick={() => setShowExtraModal(false)} variant="outline" className={`flex-1 ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA]'}`}>
+                Chiudi
+              </Button>
+              <Button
+                onClick={handleSaveExtra}
+                disabled={!extraIngId || !extraQty || Number(extraQty) <= 0 || extraSaving}
+                className="flex-1 bg-[#967D62] hover:bg-[#7A654E] text-white disabled:opacity-40"
+              >
+                {extraSaving ? 'Salvataggio…' : 'Registra'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          MODALE — VERIFICA QUANTITÀ
+      ════════════════════════════════════════════════════════ */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowVerifyModal(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className={`relative w-full max-w-lg rounded-2xl shadow-2xl border overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className={`flex items-center justify-between px-6 py-4 border-b ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+              <div>
+                <h2 className={`text-lg font-bold ${textColor}`}>Verifica Quantità</h2>
+                <p className={`text-xs mt-0.5 ${mutedText}`}>Inserisci le quantità reali trovate in magazzino. Lascia vuoto per non modificare.</p>
+              </div>
+              <button onClick={() => setShowVerifyModal(false)} className={`p-1.5 rounded-lg transition-colors ${isDinner ? 'hover:bg-[#334155] text-[#94A3B8]' : 'hover:bg-gray-100 text-[#8C8A85]'}`}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className={`px-6 py-4 space-y-2 max-h-[60vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+              {ingredients.map((ing: any) => (
+                <div key={ing.id} className="flex items-center gap-3">
+                  <span className={`flex-1 text-sm ${textColor}`}>{ing.name}</span>
+                  <span className={`text-xs ${mutedText} w-20 text-right`}>{ing.currentQty}{ing.unit}</span>
+                  <Input
+                    type="number"
+                    placeholder="Reale"
+                    value={verifyValues[ing.id] || ''}
+                    onChange={e => setVerifyValues((prev: any) => ({ ...prev, [ing.id]: e.target.value }))}
+                    className={`w-24 text-right ${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
+                  />
+                  <span className={`text-xs w-6 ${mutedText}`}>{ing.unit}</span>
+                </div>
+              ))}
+            </div>
+            <div className={`flex gap-3 px-6 py-4 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+              <Button onClick={() => { setShowVerifyModal(false); setVerifyValues({}); }} variant="outline" className={`flex-1 ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA]'}`}>
+                Annulla
+              </Button>
+              <Button
+                onClick={() => {
+                  setIngredients((prev: any) => prev.map((ing: any) => {
+                    const real = verifyValues[ing.id];
+                    if (real === undefined || real === '') return ing;
+                    return { ...ing, currentQty: Number(real) };
+                  }));
+                  setShowVerifyModal(false);
+                  setVerifyValues({});
+                }}
+                className="flex-1 bg-[#967D62] hover:bg-[#7A654E] text-white"
+              >
+                Salva Verifica
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
