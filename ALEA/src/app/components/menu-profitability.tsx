@@ -1300,7 +1300,7 @@ export function MenuProfitability({
             <div className={`rounded-xl border ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
               <button
                 onClick={() => setBevPortfolioOpen(v => !v)}
-                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
+                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors font-semibold ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
               >
                 <div className="flex items-center gap-3">
                   <span className={`text-sm font-bold ${textColor}`}>🍹 Frequenze Bevande</span>
@@ -1800,11 +1800,11 @@ export function MenuProfitability({
             <div className={`rounded-xl border ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
               <button
                 onClick={() => setBevRankingOpen(v => !v)}
-                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
+                className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl transition-colors font-semibold ${isDinner ? 'hover:bg-[#334155]/30' : 'hover:bg-[#F4F1EA]/60'}`}
               >
                 <div className="flex items-center gap-3">
                   <span className={`text-sm font-bold ${textColor}`}>🍹 Bevande</span>
-                  <span className={`text-xs ${mutedText}`}>Margine% × Frequenza</span>
+
                 </div>
                 {bevRankingOpen ? <ChevronUp className={`w-4 h-4 ${mutedText}`} /> : <ChevronDown className={`w-4 h-4 ${mutedText}`} />}
               </button>
