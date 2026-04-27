@@ -232,6 +232,101 @@ export function PianificazioneView(props: PianificazioneViewProps) {
 
   // Converti showVerifyForm in modale
   const [showVerifyModal, setShowVerifyModal] = React.useState(false);
+  const [verifySnapshots, setVerifySnapshots] = React.useState<any[]>([]);
+  const [verifySnapshotId, setVerifySnapshotId] = React.useState<string>('__auto__'); // __auto__ = più recente
+  const [verifyThreshold, setVerifyThreshold] = React.useState(5); // % soglia normalità
+  const [verifyPhase, setVerifyPhase] = React.useState<'input' | 'analysis'>('input');
+  const [verifySnapDropOpen, setVerifySnapDropOpen] = React.useState(false);
+  const verifySnapRef = React.useRef<HTMLDivElement>(null);
+
+  // Carica snapshots quando si apre la modale verifica
+  const loadVerifySnapshots = async () => {
+    if (!isLoggedIn || !supabase) return;
+    const userId = (await supabase.auth.getUser()).data.user?.id;
+    if (!userId) return;
+    const { data } = await supabase
+      .from('analysis_snapshots')
+      .select('id, label, period_start, period_end, data')
+      .eq('user_id', userId)
+      .order('period_start', { ascending: false });
+    if (data) setVerifySnapshots(data);
+  };
+
+  // Chiudi dropdown snapshot cliccando fuori
+  React.useEffect(() => {
+    if (!verifySnapDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (verifySnapRef.current && !verifySnapRef.current.contains(e.target as Node)) {
+        setVerifySnapDropOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [verifySnapDropOpen]);
+
+  // Calcola analisi scostamento per gli ingredienti modificati
+  const computeVerifyAnalysis = () => {
+    const modified = Object.entries(verifyValues).filter(([, v]) => v !== '');
+    if (modified.length === 0) return [];
+
+    // Scegli snapshot: selezionato o più recente
+    const snap = verifySnapshotId === '__auto__'
+      ? verifySnapshots[0] // già ordinati per period_start desc
+      : verifySnapshots.find(s => s.id === verifySnapshotId);
+
+    return modified.map(([ingId, realStr]) => {
+      const ing = ingredients.find((i: any) => i.id === ingId);
+      if (!ing) return null;
+      const theoretical = ing.currentQty;
+      const real = Number(realStr);
+      const diff = real - theoretical; // negativo = hai meno del previsto
+      const diffPct = theoretical > 0 ? (Math.abs(diff) / theoretical) * 100 : 0;
+      const isSignificant = diffPct > verifyThreshold;
+
+      // Stima per piatto: quali piatti usano questo ingrediente e quanto
+      let dishBreakdown: Array<{ dish: string; qtyPerPortion: number; unit: string; frequency: number; total: number }> = [];
+      if (snap) {
+        const snapDishes = snap.data?.dishes ?? [];
+        const snapRecipes = snap.data?.recipes ?? {};
+        Object.entries(snapRecipes as Record<string, any[]>).forEach(([dishName, rows]) => {
+          rows.forEach((row: any) => {
+            if (row.ingredientId !== ingId) return;
+            const snapDish = snapDishes.find((d: any) => d.name === dishName);
+            const freq = snapDish?.frequency ?? 0;
+            const qtyPer = row.portionsPerPiece ? 1 / row.portionsPerPiece : row.qty;
+            dishBreakdown.push({
+              dish: dishName,
+              qtyPerPortion: qtyPer,
+              unit: row.unit ?? ing.unit,
+              frequency: freq,
+              total: qtyPer * freq,
+            });
+          });
+        });
+        dishBreakdown = dishBreakdown.filter(d => d.frequency > 0).sort((a, b) => b.total - a.total);
+      }
+
+      // Scostamento medio per piatto: diff distribuito proporzionalmente
+      const totalExpected = dishBreakdown.reduce((s, d) => s + d.total, 0);
+      const dishWithDelta = dishBreakdown.map(d => ({
+        ...d,
+        share: totalExpected > 0 ? d.total / totalExpected : 0,
+        avgDeltaPerPortion: totalExpected > 0 && d.frequency > 0
+          ? (diff * (d.total / totalExpected)) / d.frequency
+          : 0,
+      }));
+
+      return {
+        ingId, ingName: ing.name, unit: ing.unit,
+        theoretical, real, diff, diffPct,
+        isSignificant,
+        hasSnapshot: !!snap,
+        snapshotLabel: snap ? snap.label : null,
+        isAutoSnap: verifySnapshotId === '__auto__',
+        dishes: dishWithDelta,
+      };
+    }).filter(Boolean);
+  };
   const [editingPriceValue, setEditingPriceValue] = React.useState<string>('');
 
   // Chiudi dropdown ingrediente cliccando fuori
@@ -904,7 +999,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                 >
                                                     <Flame className="w-4 h-4 mr-2" /> Registra consumi interni
                                                 </Button>
-                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); }} className={`w-full font-semibold ${isDinner ? 'bg-[#967D62] hover:bg-[#7A654E] text-[#F4F1EA]' : 'bg-[#B89A80] hover:bg-[#967D62] text-white'}`}>
+                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); setVerifyPhase('input'); loadVerifySnapshots(); }} className={`w-full font-semibold ${isDinner ? 'bg-[#967D62] hover:bg-[#7A654E] text-[#F4F1EA]' : 'bg-[#B89A80] hover:bg-[#967D62] text-white'}`}>
                                                     <CheckCircle2 className="w-4 h-4 mr-2" /> Verifica Quantità
                                                 </Button>
                                             </div>
@@ -1928,60 +2023,243 @@ export function PianificazioneView(props: PianificazioneViewProps) {
       {/* ════════════════════════════════════════════════════════
           MODALE — VERIFICA QUANTITÀ
       ════════════════════════════════════════════════════════ */}
-      {showVerifyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowVerifyModal(false)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div
-            className={`relative w-full max-w-lg rounded-2xl shadow-2xl border overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className={`flex items-center justify-between px-6 py-4 border-b ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
-              <div>
-                <h2 className={`text-lg font-bold ${textColor}`}>Verifica Quantità</h2>
-                <p className={`text-xs mt-0.5 ${mutedText}`}>Inserisci le quantità reali trovate in magazzino. Lascia vuoto per non modificare.</p>
-              </div>
-              <button onClick={() => setShowVerifyModal(false)} className={`p-1.5 rounded-lg transition-colors ${isDinner ? 'hover:bg-[#334155] text-[#94A3B8]' : 'hover:bg-gray-100 text-[#8C8A85]'}`}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className={`px-6 py-4 space-y-2 max-h-[60vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
-              {ingredients.map((ing: any) => (
-                <div key={ing.id} className="flex items-center gap-3">
-                  <span className={`flex-1 text-sm ${textColor}`}>{ing.name}</span>
-                  <span className={`text-xs ${mutedText} w-20 text-right`}>{ing.currentQty}{ing.unit}</span>
-                  <Input
-                    type="number"
-                    placeholder="Reale"
-                    value={verifyValues[ing.id] || ''}
-                    onChange={e => setVerifyValues((prev: any) => ({ ...prev, [ing.id]: e.target.value }))}
-                    className={`w-24 text-right ${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
-                  />
-                  <span className={`text-xs w-6 ${mutedText}`}>{ing.unit}</span>
+      {showVerifyModal && (() => {
+        const analysis = verifyPhase === 'analysis' ? computeVerifyAnalysis() : [];
+        const modifiedCount = Object.values(verifyValues).filter(v => v !== '').length;
+        const divCls = isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]';
+        const selectedSnap = verifySnapshotId === '__auto__' ? verifySnapshots[0] : verifySnapshots.find(s => s.id === verifySnapshotId);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => { setShowVerifyModal(false); setVerifyPhase('input'); }}>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div
+              className={`relative w-full max-w-2xl rounded-2xl shadow-2xl border overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className={`flex items-center justify-between px-6 py-4 border-b ${divCls}`}>
+                <div>
+                  <h2 className={`text-lg font-bold ${textColor}`}>Verifica Quantità</h2>
+                  <p className={`text-xs mt-0.5 ${mutedText}`}>
+                    {verifyPhase === 'input'
+                      ? 'Inserisci le quantità reali trovate in magazzino. Lascia vuoto per non modificare.'
+                      : `Analisi scostamenti — ${modifiedCount} ingredient${modifiedCount === 1 ? 'e' : 'i'} modificat${modifiedCount === 1 ? 'o' : 'i'}`}
+                  </p>
                 </div>
-              ))}
-            </div>
-            <div className={`flex gap-3 px-6 py-4 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
-              <Button onClick={() => { setShowVerifyModal(false); setVerifyValues({}); }} variant="outline" className={`flex-1 ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA]'}`}>
-                Annulla
-              </Button>
-              <Button
-                onClick={() => {
-                  setIngredients((prev: any) => prev.map((ing: any) => {
-                    const real = verifyValues[ing.id];
-                    if (real === undefined || real === '') return ing;
-                    return { ...ing, currentQty: Number(real) };
-                  }));
-                  setShowVerifyModal(false);
-                  setVerifyValues({});
-                }}
-                className="flex-1 bg-[#967D62] hover:bg-[#7A654E] text-white"
-              >
-                Salva Verifica
-              </Button>
+                <button onClick={() => { setShowVerifyModal(false); setVerifyPhase('input'); }} className={`p-1.5 rounded-lg transition-colors ${isDinner ? 'hover:bg-[#334155] text-[#94A3B8]' : 'hover:bg-gray-100 text-[#8C8A85]'}`}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {verifyPhase === 'input' ? (
+                <>
+                  {/* Selezione periodo + soglia */}
+                  <div className={`px-6 pt-4 pb-3 border-b ${divCls} space-y-3`}>
+                    {/* Periodo */}
+                    {verifySnapshots.length > 0 && (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className={`text-xs font-semibold uppercase tracking-wider shrink-0 ${mutedText}`}>Periodo di confronto</span>
+                        <div className="relative flex-1 min-w-[200px]" ref={verifySnapRef}>
+                          <button
+                            onClick={() => setVerifySnapDropOpen(v => !v)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-colors ${
+                              isDinner ? 'border-[#334155] text-[#F4F1EA] hover:border-[#967D62]/40' : 'border-[#EAE5DA] text-[#2C2A28] hover:border-[#967D62]/40'
+                            }`}
+                          >
+                            <span className="truncate">
+                              {verifySnapshotId === '__auto__'
+                                ? `Automatico${selectedSnap ? ` (${selectedSnap.label})` : ' — nessuno disponibile'}`
+                                : selectedSnap ? selectedSnap.label : '—'}
+                            </span>
+                            <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${verifySnapDropOpen ? 'rotate-180' : ''}`} />
+                          </button>
+                          {verifySnapDropOpen && (
+                            <div className={`absolute z-50 mt-1 w-full rounded-xl border shadow-xl overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}>
+                              <button onClick={() => { setVerifySnapshotId('__auto__'); setVerifySnapDropOpen(false); }}
+                                className={`w-full text-left px-4 py-2.5 text-xs transition-colors ${verifySnapshotId === '__auto__' ? (isDinner ? 'bg-[#967D62]/20 text-[#F4F1EA]' : 'bg-[#967D62]/10 text-[#967D62]') : (isDinner ? 'text-[#F4F1EA] hover:bg-[#334155]/40' : 'text-[#2C2A28] hover:bg-[#F4F1EA]/60')}`}>
+                                <span className="font-semibold">Automatico</span>
+                                <span className={`ml-2 ${mutedText}`}>usa il più recente disponibile</span>
+                              </button>
+                              {verifySnapshots.map(s => (
+                                <button key={s.id} onClick={() => { setVerifySnapshotId(s.id); setVerifySnapDropOpen(false); }}
+                                  className={`w-full text-left px-4 py-2.5 text-xs transition-colors ${s.id === verifySnapshotId ? (isDinner ? 'bg-[#967D62]/20 text-[#F4F1EA]' : 'bg-[#967D62]/10 text-[#967D62]') : (isDinner ? 'text-[#F4F1EA] hover:bg-[#334155]/40' : 'text-[#2C2A28] hover:bg-[#F4F1EA]/60')}`}>
+                                  <span className="font-semibold">{s.label}</span>
+                                  <span className={`ml-2 ${mutedText}`}>{s.period_start} → {s.period_end}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {/* Soglia */}
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs font-semibold uppercase tracking-wider shrink-0 ${mutedText}`}>Soglia normalità</span>
+                      <input type="range" min={1} max={20} step={1} value={verifyThreshold}
+                        onChange={e => setVerifyThreshold(Number(e.target.value))}
+                        className={`flex-1 h-1 rounded-full appearance-none cursor-pointer accent-[#967D62] ${isDinner ? '[&::-webkit-slider-runnable-track]:bg-[#475569]' : '[&::-webkit-slider-runnable-track]:bg-[#B8B2A8]'} [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-[#967D62]`}
+                      />
+                      <span className={`text-xs font-bold w-8 shrink-0 text-right ${textColor}`}>{verifyThreshold}%</span>
+                      <span className={`text-xs ${mutedText}`}>scostamenti sotto questa soglia sono considerati normali</span>
+                    </div>
+                  </div>
+
+                  {/* Lista ingredienti */}
+                  <div className={`px-6 py-3 space-y-2 max-h-[50vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+                    {ingredients.map((ing: any) => (
+                      <div key={ing.id} className="flex items-center gap-3">
+                        <span className={`flex-1 text-sm ${textColor}`}>{ing.name}</span>
+                        <span className={`text-xs ${mutedText} w-24 text-right`}>{ing.currentQty}{ing.unit}</span>
+                        <Input
+                          type="number"
+                          placeholder="Reale"
+                          value={verifyValues[ing.id] || ''}
+                          onChange={e => setVerifyValues((prev: any) => ({ ...prev, [ing.id]: e.target.value }))}
+                          className={`w-24 text-right ${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
+                        />
+                        <span className={`text-xs w-6 ${mutedText}`}>{ing.unit}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer fase 1 */}
+                  <div className={`flex gap-3 px-6 py-4 border-t ${divCls}`}>
+                    <Button onClick={() => { setShowVerifyModal(false); setVerifyPhase('input'); setVerifyValues({}); }} variant="outline" className={`flex-1 ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA]'}`}>
+                      Annulla
+                    </Button>
+                    <Button
+                      disabled={modifiedCount === 0}
+                      onClick={() => setVerifyPhase('analysis')}
+                      variant="outline"
+                      className={`flex-1 disabled:opacity-40 ${isDinner ? 'border-[#334155] text-[#F4F1EA]' : 'border-[#EAE5DA]'}`}
+                    >
+                      Analisi scostamenti ({modifiedCount})
+                    </Button>
+                    <Button
+                      disabled={modifiedCount === 0}
+                      onClick={() => {
+                        setIngredients((prev: any) => prev.map((ing: any) => {
+                          const real = verifyValues[ing.id];
+                          if (real === undefined || real === '') return ing;
+                          return { ...ing, currentQty: Number(real) };
+                        }));
+                        setShowVerifyModal(false);
+                        setVerifyPhase('input');
+                        setVerifyValues({});
+                      }}
+                      className="flex-1 bg-[#967D62] hover:bg-[#7A654E] text-white disabled:opacity-40"
+                    >
+                      Salva Verifica
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Fase 2: analisi scostamenti */}
+                  <div className={`px-6 py-4 space-y-4 max-h-[65vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+                    {/* Badge periodo usato */}
+                    {selectedSnap && (
+                      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
+                        verifySnapshotId === '__auto__'
+                          ? (isDinner ? 'bg-amber-950/20 border border-amber-800/30 text-amber-400' : 'bg-amber-50 border border-amber-100 text-amber-700')
+                          : (isDinner ? 'bg-[#967D62]/10 border border-[#967D62]/20 text-[#C4A882]' : 'bg-[#967D62]/5 border border-[#967D62]/20 text-[#7A4F3A]')
+                      }`}>
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {verifySnapshotId === '__auto__'
+                          ? `Stima basata sul periodo più recente disponibile: "${selectedSnap.label}". Le frequenze potrebbero non corrispondere al periodo attuale.`
+                          : `Analisi basata sul periodo: "${selectedSnap.label}"`}
+                      </div>
+                    )}
+                    {!selectedSnap && (
+                      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${isDinner ? 'bg-[#334155]/40 text-[#94A3B8]' : 'bg-gray-50 text-[#8C8A85]'}`}>
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        Nessun periodo salvato disponibile — mostro solo lo scostamento grezzo senza analisi per piatto.
+                      </div>
+                    )}
+
+                    {analysis.map((item: any) => {
+                      const isNeg = item.diff < 0;
+                      const isSignif = item.isSignificant;
+                      const diffColor = !isSignif ? mutedText : isNeg
+                        ? (isDinner ? 'text-rose-400' : 'text-rose-600')
+                        : (isDinner ? 'text-emerald-400' : 'text-emerald-600');
+
+                      return (
+                        <div key={item.ingId} className={`p-4 rounded-xl border space-y-3 ${
+                          isSignif
+                            ? (isNeg ? (isDinner ? 'border-rose-800/40 bg-rose-950/10' : 'border-rose-100 bg-rose-50/50') : (isDinner ? 'border-emerald-800/40 bg-emerald-950/10' : 'border-emerald-100 bg-emerald-50/50'))
+                            : (isDinner ? 'border-[#334155] bg-[#0F172A]/40' : 'border-[#EAE5DA] bg-gray-50/50')
+                        }`}>
+                          {/* Riga principale */}
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                              <span className={`font-semibold text-sm ${textColor}`}>{item.ingName}</span>
+                              {!isSignif && <span className={`ml-2 text-xs ${mutedText}`}>nella norma (±{verifyThreshold}%)</span>}
+                            </div>
+                            <div className="flex items-center gap-4 text-right shrink-0">
+                              <div>
+                                <p className={`text-[10px] ${mutedText}`}>Teorico</p>
+                                <p className={`text-sm font-bold ${textColor}`}>{item.theoretical.toFixed(3)}{item.unit}</p>
+                              </div>
+                              <div>
+                                <p className={`text-[10px] ${mutedText}`}>Reale</p>
+                                <p className={`text-sm font-bold ${textColor}`}>{item.real.toFixed(3)}{item.unit}</p>
+                              </div>
+                              <div>
+                                <p className={`text-[10px] ${mutedText}`}>Diff.</p>
+                                <p className={`text-sm font-bold ${diffColor}`}>{item.diff >= 0 ? '+' : ''}{item.diff.toFixed(3)}{item.unit} ({item.diffPct.toFixed(1)}%)</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Breakdown per piatto */}
+                          {isSignif && item.dishes.length > 0 && (
+                            <div className={`pt-2 border-t ${isDinner ? 'border-[#334155]/60' : 'border-black/5'} space-y-1`}>
+                              <p className={`text-[10px] font-semibold uppercase tracking-wider ${mutedText} mb-1.5`}>Distribuzione scostamento per piatto</p>
+                              {item.dishes.slice(0, 5).map((d: any) => (
+                                <div key={d.dish} className="flex items-center justify-between gap-3">
+                                  <span className={`text-xs truncate flex-1 ${textColor}`}>{d.dish}</span>
+                                  <span className={`text-xs ${mutedText} shrink-0`}>{d.qtyPerPortion.toFixed(3)}{d.unit}/p × {d.frequency} ord.</span>
+                                  <span className={`text-xs font-semibold shrink-0 ${diffColor}`}>
+                                    {d.avgDeltaPerPortion >= 0 ? '+' : ''}{d.avgDeltaPerPortion.toFixed(3)}{d.unit}/p
+                                  </span>
+                                </div>
+                              ))}
+                              {item.dishes.length > 5 && <p className={`text-[10px] ${mutedText}`}>+ altri {item.dishes.length - 5} piatti</p>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer fase 2 */}
+                  <div className={`flex gap-3 px-6 py-4 border-t ${divCls}`}>
+                    <Button onClick={() => setVerifyPhase('input')} variant="outline" className={`flex-1 ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA]'}`}>
+                      ← Modifica valori
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setIngredients((prev: any) => prev.map((ing: any) => {
+                          const real = verifyValues[ing.id];
+                          if (real === undefined || real === '') return ing;
+                          return { ...ing, currentQty: Number(real) };
+                        }));
+                        setShowVerifyModal(false);
+                        setVerifyPhase('input');
+                        setVerifyValues({});
+                      }}
+                      className="flex-1 bg-[#967D62] hover:bg-[#7A654E] text-white"
+                    >
+                      Salva Verifica
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }
