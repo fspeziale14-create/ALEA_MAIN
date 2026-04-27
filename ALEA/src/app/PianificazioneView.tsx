@@ -825,12 +825,11 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                             <div className="pt-2 space-y-2">
                                                 <Button
                                                     onClick={() => { setShowExtraModal(true); setExtraMsg(null); setExtraIngId(''); setExtraQty(''); setExtraNote(''); setExtraDate(new Date().toISOString().split('T')[0]); setExtraCategory('waste'); }}
-                                                    variant="ghost"
-                                                    className={`w-full font-semibold ${isDinner ? 'text-[#C4A882] hover:bg-[#334155]/40' : 'text-[#7A4F3A] hover:bg-[#967D62]/5'}`}
+                                                    className={`w-full font-semibold bg-[#967D62] hover:bg-[#7A654E] ${isDinner ? 'text-[#F4F1EA]' : 'text-[#F4F1EA]'}`}
                                                 >
                                                     <Flame className="w-4 h-4 mr-2" /> Registra consumo extra
                                                 </Button>
-                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); }} variant="ghost" className={`w-full font-semibold ${isDinner ? 'text-[#C4A882] hover:bg-[#334155]/40' : 'text-[#7A4F3A] hover:bg-[#967D62]/5'}`}>
+                                                <Button onClick={() => { setShowVerifyModal(true); setVerifyValues({}); }} className={`w-full font-semibold bg-[#967D62] hover:bg-[#7A654E] ${isDinner ? 'text-[#F4F1EA]' : 'text-[#F4F1EA]'}`}>
                                                     <CheckCircle2 className="w-4 h-4 mr-2" /> Verifica Quantità
                                                 </Button>
                                             </div>
