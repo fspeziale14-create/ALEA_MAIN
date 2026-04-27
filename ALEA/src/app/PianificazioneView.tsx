@@ -179,6 +179,11 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   const [extraDate, setExtraDate] = React.useState<string>(new Date().toISOString().split('T')[0]);
   const [extraSaving, setExtraSaving] = React.useState(false);
   const [extraMsg, setExtraMsg] = React.useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const [extraIngDropOpen, setExtraIngDropOpen] = React.useState(false);
+  const [extraIngSearch, setExtraIngSearch] = React.useState('');
+  const extraIngRef = React.useRef<HTMLDivElement>(null);
+  const extraFileRef = React.useRef<HTMLInputElement>(null);
+  const [extraImportMsg, setExtraImportMsg] = React.useState<{ type: 'ok' | 'err' | 'warn'; msg: string } | null>(null);
 
   const extraCategories = [
     { key: 'waste' as const,      label: 'Scarto',             icon: Trash2,          color: 'text-rose-500' },
@@ -228,6 +233,76 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   // Converti showVerifyForm in modale
   const [showVerifyModal, setShowVerifyModal] = React.useState(false);
   const [editingPriceValue, setEditingPriceValue] = React.useState<string>('');
+
+  // Chiudi dropdown ingrediente cliccando fuori
+  React.useEffect(() => {
+    if (!extraIngDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (extraIngRef.current && !extraIngRef.current.contains(e.target as Node)) {
+        setExtraIngDropOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [extraIngDropOpen]);
+
+  // Handler import file consumi
+  const handleExtraImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const text = ev.target?.result as string;
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length < 2) throw new Error('File vuoto o senza dati.');
+        const header = lines[0].toLowerCase().split(/[,;\t]/);
+        const nameIdx  = header.findIndex(h => h.includes('nome') || h.includes('ingrediente'));
+        const qtyIdx   = header.findIndex(h => h.includes('quant') || h.includes('qty'));
+        const dateIdx  = header.findIndex(h => h.includes('data') || h.includes('date'));
+        const catIdx   = header.findIndex(h => h.includes('causa') || h.includes('categ'));
+        const noteIdx  = header.findIndex(h => h.includes('nota') || h.includes('note'));
+        if (nameIdx === -1 || qtyIdx === -1) throw new Error('Colonne "nome" e "quantità" obbligatorie.');
+        const VALID_CATS: Record<string, 'waste'|'personale'|'operativo'|'altro'> = {
+          'scarto': 'waste', 'waste': 'waste', 'spreco': 'waste',
+          'personale': 'personale', 'pasto': 'personale', 'staff': 'personale',
+          'operativo': 'operativo', 'pulizia': 'operativo', 'cucina': 'operativo',
+        };
+        let saved = 0; let skipped = 0;
+        const userId = isLoggedIn && supabase ? (await supabase.auth.getUser()).data.user?.id : null;
+        const ingUpdates: Record<string, number> = {};
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(/[,;\t]/);
+          const rawName = cols[nameIdx]?.trim();
+          const rawQty  = parseFloat(cols[qtyIdx]?.trim() ?? '');
+          if (!rawName || isNaN(rawQty) || rawQty <= 0) { skipped++; continue; }
+          const ing = ingredients.find((x: any) => x.name.toLowerCase() === rawName.toLowerCase());
+          if (!ing) { skipped++; continue; }
+          const rawDate = dateIdx >= 0 ? cols[dateIdx]?.trim() : '';
+          const recordedAt = rawDate && /\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate : new Date().toISOString().split('T')[0];
+          const rawCat = catIdx >= 0 ? cols[catIdx]?.trim().toLowerCase() : '';
+          const category: 'waste'|'personale'|'operativo'|'altro' = VALID_CATS[rawCat] ?? 'altro';
+          const note = noteIdx >= 0 ? cols[noteIdx]?.trim() || null : null;
+          ingUpdates[ing.id] = (ingUpdates[ing.id] ?? 0) + rawQty;
+          if (userId && supabase) {
+            await supabase.from('extra_consumption').insert({
+              user_id: userId, ingredient_id: ing.id, ingredient_name: ing.name,
+              qty: rawQty, unit: ing.unit, category, note, recorded_at: recordedAt,
+            });
+          }
+          saved++;
+        }
+        setIngredients((prev: any[]) => prev.map((i: any) =>
+          ingUpdates[i.id] !== undefined ? { ...i, currentQty: Math.max(0, (i.currentQty ?? 0) - ingUpdates[i.id]) } : i
+        ));
+        setExtraImportMsg({ type: saved > 0 && skipped === 0 ? 'ok' : 'warn', msg: `Importate ${saved} registrazioni.${skipped > 0 ? ` ${skipped} righe saltate (ingrediente non trovato o dati mancanti).` : ''}` });
+      } catch (err: any) {
+        setExtraImportMsg({ type: 'err', msg: `Errore: ${err.message}` });
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // MCM tra due interi
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
@@ -1675,19 +1750,61 @@ export function PianificazioneView(props: PianificazioneViewProps) {
             {/* Body */}
             <div className="px-6 py-5 space-y-5">
 
-              {/* Selezione ingrediente */}
+              {/* Selezione ingrediente — dropdown styled */}
               <div>
                 <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Ingrediente</Label>
-                <select
-                  value={extraIngId}
-                  onChange={e => setExtraIngId(e.target.value)}
-                  className={`w-full px-3 py-2.5 rounded-xl border text-sm ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
-                >
-                  <option value="">— Seleziona ingrediente —</option>
-                  {[...ingredients].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((ing: any) => (
-                    <option key={ing.id} value={ing.id}>{ing.name} (giacenza: {ing.currentQty}{ing.unit})</option>
-                  ))}
-                </select>
+                <div className="relative" ref={extraIngRef}>
+                  <button
+                    type="button"
+                    onClick={() => { setExtraIngDropOpen(v => !v); setExtraIngSearch(''); }}
+                    className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
+                      extraIngId
+                        ? (isDinner ? 'border-[#967D62]/60 bg-[#967D62]/10 text-[#F4F1EA]' : 'border-[#967D62]/60 bg-[#967D62]/5 text-[#2C2A28]')
+                        : (isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/40' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/40')
+                    }`}
+                  >
+                    <span className="truncate">
+                      {extraIngId
+                        ? (() => { const ing = ingredients.find((i: any) => i.id === extraIngId); return ing ? `${ing.name} (${ing.currentQty}${ing.unit})` : '—'; })()
+                        : '— Seleziona ingrediente —'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${extraIngDropOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {extraIngDropOpen && (
+                    <div className={`absolute z-50 mt-1 w-full rounded-xl border shadow-xl overflow-hidden ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}>
+                      <div className="p-2">
+                        <input
+                          type="text"
+                          value={extraIngSearch}
+                          onChange={e => setExtraIngSearch(e.target.value)}
+                          placeholder="Cerca ingrediente…"
+                          autoFocus
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA] placeholder:text-[#475569]' : 'border-[#EAE5DA] placeholder:text-gray-400'}`}
+                        />
+                      </div>
+                      <div className="max-h-52 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {[...ingredients]
+                          .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                          .filter((ing: any) => ing.name.toLowerCase().includes(extraIngSearch.toLowerCase()))
+                          .map((ing: any) => (
+                            <button
+                              key={ing.id}
+                              type="button"
+                              onClick={() => { setExtraIngId(ing.id); setExtraIngDropOpen(false); setExtraIngSearch(''); }}
+                              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                                ing.id === extraIngId
+                                  ? (isDinner ? 'bg-[#967D62]/20 text-[#F4F1EA]' : 'bg-[#967D62]/10 text-[#967D62]')
+                                  : (isDinner ? 'text-[#F4F1EA] hover:bg-[#334155]/40' : 'text-[#2C2A28] hover:bg-[#F4F1EA]/60')
+                              }`}
+                            >
+                              <span className="font-medium">{ing.name}</span>
+                              <span className={`ml-2 text-xs ${mutedText}`}>giacenza: {ing.currentQty}{ing.unit}</span>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Quantità + data */}
@@ -1750,6 +1867,31 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                   placeholder="Es. Contenitore caduto, pasto chef…"
                   className={`${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
                 />
+              </div>
+
+              {/* Import da file */}
+              <div className={`pt-1 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+                <p className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2`}>Oppure importa da file</p>
+                {extraImportMsg && (
+                  <div className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-medium mb-2 ${
+                    extraImportMsg.type === 'ok'  ? (isDinner ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200') :
+                    extraImportMsg.type === 'err' ? (isDinner ? 'bg-rose-950/30 text-rose-400 border border-rose-800/40' : 'bg-rose-50 text-rose-700 border border-rose-200') :
+                    (isDinner ? 'bg-amber-950/30 text-amber-400 border border-amber-800/40' : 'bg-amber-50 text-amber-700 border border-amber-200')
+                  }`}>
+                    {extraImportMsg.type === 'ok' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                    {extraImportMsg.msg}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setExtraImportMsg(null); extraFileRef.current?.click(); }}
+                  className={`flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-xl border border-dashed text-xs font-medium transition-colors ${isDinner ? 'border-[#334155] text-[#94A3B8] hover:bg-[#334155]/30' : 'border-[#D1C9BC] text-[#8C8A85] hover:bg-gray-50'}`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Importa CSV / TSV
+                  <span className={`text-[10px] ${mutedText}`}>(colonne: nome, quantità, data, causa, nota)</span>
+                </button>
+                <input ref={extraFileRef} type="file" accept=".csv,.tsv,.txt" onChange={handleExtraImport} className="hidden" />
               </div>
 
               {/* Feedback */}
