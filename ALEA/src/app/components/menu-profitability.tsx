@@ -431,12 +431,12 @@ export function MenuProfitability({
             if (isPieceUnit(ing.unit)) {
               if (row.portionsPerPiece && row.portionsPerPiece > 0) {
                 const consumed = freq / row.portionsPerPiece;
-                updated[idx] = { ...ing, currentQty: Math.max(0, ing.currentQty - consumed) };
+                updated[idx] = { ...ing, currentQty: ing.currentQty - consumed };
               }
             } else {
               const qtyInBase = toBaseQty(row.qty, row.unit ?? ing.unit, ing.unit);
               const consumed = qtyInBase * freq;
-              updated[idx] = { ...ing, currentQty: Math.max(0, ing.currentQty - consumed) };
+              updated[idx] = { ...ing, currentQty: ing.currentQty - consumed };
             }
           });
         });
