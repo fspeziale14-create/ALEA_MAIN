@@ -65,6 +65,11 @@ export function ConsumiView({
   const [periodDays, setPeriodDays] = useState<30 | 90 | 365>(30);
   const [showAll, setShowAll] = useState(false);
 
+  // ── TREND STATE ───────────────────────────────────────────────
+  const [trendPeriodWeeks, setTrendPeriodWeeks] = useState<4 | 12 | 24 | 52>(12);
+  const [trendIngredients, setTrendIngredients] = useState<string[]>([]);
+  const [trendSearch, setTrendSearch] = useState('');
+
   // Carica tutti i record
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -145,6 +150,109 @@ export function ConsumiView({
     if (prev === 0) return null;
     return { delta: last - prev, pct: Math.round(((last - prev) / prev) * 100) };
   }, [monthlyTrend]);
+
+  // ── TREND COMPUTATIONS ───────────────────────────────────────
+
+  // Build weekly/monthly buckets based on trendPeriodWeeks
+  const trendBuckets = useMemo(() => {
+    const useWeeks = trendPeriodWeeks <= 12;
+    const bucketCount = useWeeks ? trendPeriodWeeks : Math.ceil(trendPeriodWeeks / 4);
+    const now = new Date();
+    const buckets: Array<{ label: string; start: string; end: string }> = [];
+
+    for (let i = bucketCount - 1; i >= 0; i--) {
+      if (useWeeks) {
+        const end = new Date(now);
+        end.setDate(end.getDate() - i * 7);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 6);
+        buckets.push({
+          label: `${start.getDate()}/${start.getMonth()+1}`,
+          start: start.toISOString().split('T')[0],
+          end: end.toISOString().split('T')[0],
+        });
+      } else {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const endD = new Date(d.getFullYear(), d.getMonth()+1, 0);
+        buckets.push({
+          label: d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }),
+          start: d.toISOString().split('T')[0],
+          end: endD.toISOString().split('T')[0],
+        });
+      }
+    }
+    return buckets;
+  }, [trendPeriodWeeks]);
+
+  // Top 8 ingredients by total qty in trend period
+  const trendTopIngredients = useMemo(() => {
+    const cutoff = trendBuckets[0]?.start ?? '';
+    const map: Record<string, { name: string; unit: string; total: number }> = {};
+    records.filter(r => r.recorded_at >= cutoff).forEach(r => {
+      if (!map[r.ingredient_name]) map[r.ingredient_name] = { name: r.ingredient_name, unit: r.unit, total: 0 };
+      map[r.ingredient_name].total += r.qty;
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 8);
+  }, [records, trendBuckets]);
+
+  // Chart data for selected ingredients over buckets
+  const trendChartData = useMemo(() => {
+    return trendBuckets.map(bucket => {
+      const point: Record<string, any> = { period: bucket.label };
+      trendIngredients.forEach(name => {
+        point[name] = records
+          .filter(r => r.ingredient_name === name && r.recorded_at >= bucket.start && r.recorded_at <= bucket.end)
+          .reduce((s, r) => s + r.qty, 0);
+      });
+      return point;
+    });
+  }, [records, trendBuckets, trendIngredients]);
+
+  // Category breakdown over time (monthly always for readability)
+  const categoryTrendData = useMemo(() => {
+    const cutoff = trendBuckets[0]?.start ?? '';
+    const months: Record<string, Record<string, number>> = {};
+    const now = new Date();
+    for (let i = Math.min(5, Math.ceil(trendPeriodWeeks / 4) - 1); i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
+      months[key] = { waste: 0, personale: 0, operativo: 0, altro: 0 };
+    }
+    records.filter(r => r.recorded_at >= cutoff).forEach(r => {
+      const d = new Date(r.recorded_at + 'T12:00:00');
+      const key = d.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
+      if (months[key]) months[key][r.category] = (months[key][r.category] ?? 0) + 1;
+    });
+    return Object.entries(months).map(([period, cats]) => ({ period, ...cats }));
+  }, [records, trendBuckets, trendPeriodWeeks]);
+
+  // Auto-detect trends: ingredients with monotonic increase/decrease over last 3 buckets
+  const autoTrends = useMemo(() => {
+    if (trendBuckets.length < 3) return [];
+    const lastThree = trendBuckets.slice(-3);
+    const ingNames = Array.from(new Set(records.map(r => r.ingredient_name)));
+    const results: Array<{ name: string; unit: string; direction: 'up' | 'down'; pctChange: number; values: number[] }> = [];
+
+    ingNames.forEach(name => {
+      const vals = lastThree.map(b =>
+        records.filter(r => r.ingredient_name === name && r.recorded_at >= b.start && r.recorded_at <= b.end)
+          .reduce((s, r) => s + r.qty, 0)
+      );
+      if (vals.every(v => v === 0)) return;
+      const alwaysUp   = vals[0] < vals[1] && vals[1] < vals[2];
+      const alwaysDown = vals[0] > vals[1] && vals[1] > vals[2];
+      if (!alwaysUp && !alwaysDown) return;
+      const first = vals[0] || 0.001;
+      const pctChange = ((vals[2] - first) / Math.abs(first)) * 100;
+      if (Math.abs(pctChange) < 10) return;
+      const unit = records.find(r => r.ingredient_name === name)?.unit ?? '';
+      results.push({ name, unit, direction: alwaysUp ? 'up' : 'down', pctChange, values: vals });
+    });
+
+    return results.sort((a, b) => Math.abs(b.pctChange) - Math.abs(a.pctChange));
+  }, [records, trendBuckets]);
+
+  const TREND_COLORS = ['#967D62','#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316'];
 
   const chartColors = {
     grid: isDinner ? '#334155' : '#EAE5DA',
@@ -365,6 +473,144 @@ export function ConsumiView({
               )}
             </CardContent>
           </Card>
+        {/* ── SEZIONE TREND ─────────────────────────────────── */}
+        <div className={`space-y-6 pt-6 border-t ${isDinner ? 'border-[#334155]' : 'border-[#EAE5DA]'}`}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className={`text-xl font-bold ${textColor}`}>Trend Sprechi</h2>
+              <p className={`text-xs mt-0.5 ${mutedText}`}>Evoluzione dei consumi nel tempo per ingrediente e categoria.</p>
+            </div>
+            <div className={`flex gap-1 p-1 rounded-xl border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-black/5 border-[#EAE5DA]'}`}>
+              {([{ weeks: 4, label: '4 sett.' }, { weeks: 12, label: '3 mesi' }, { weeks: 24, label: '6 mesi' }, { weeks: 52, label: '1 anno' }] as const).map(opt => (
+                <button key={opt.weeks} onClick={() => setTrendPeriodWeeks(opt.weeks)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${trendPeriodWeeks === opt.weeks ? (isDinner ? 'bg-[#967D62] text-white' : 'bg-white text-[#967D62] shadow-sm border border-[#EAE5DA]') : `${mutedText} hover:text-[#967D62]`}`}>{opt.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {records.length === 0 ? (
+            <p className={`text-sm ${mutedText} text-center py-8`}>Nessun dato disponibile per i trend.</p>
+          ) : (
+            <>
+              {/* Tendenze automatiche */}
+              {autoTrends.length > 0 && (
+                <Card className={cardBg}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}><TrendingUp className="w-4 h-4" /> Tendenze rilevate</CardTitle>
+                    <p className={`text-xs ${mutedText}`}>Ingredienti con variazione costante negli ultimi 3 periodi selezionati.</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {autoTrends.map((t, i) => {
+                        const isUp = t.direction === 'up';
+                        const color = isUp ? (isDinner ? 'text-rose-400' : 'text-rose-600') : (isDinner ? 'text-emerald-400' : 'text-emerald-600');
+                        const bg = isUp ? (isDinner ? 'bg-rose-950/20 border-rose-800/30' : 'bg-rose-50 border-rose-100') : (isDinner ? 'bg-emerald-950/20 border-emerald-800/30' : 'bg-emerald-50 border-emerald-100');
+                        const Icon = isUp ? TrendingUp : TrendingDown;
+                        return (
+                          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${bg}`}>
+                            <Icon className={`w-4 h-4 shrink-0 ${color}`} />
+                            <div className="flex-1 min-w-0">
+                              <span className={`font-semibold text-sm ${textColor}`}>{t.name}</span>
+                              <span className={`text-xs ml-2 ${mutedText}`}>{t.values.map(v => v.toFixed(2)).join(' → ')} {t.unit}</span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className={`text-xs font-semibold ${color}`}>{isUp ? '▲' : '▼'} {Math.abs(t.pctChange).toFixed(1)}%</p>
+                              <p className={`text-[10px] ${mutedText}`}>{isUp ? 'in aumento' : 'in calo'}</p>
+                            </div>
+                            <button onClick={() => { if (!trendIngredients.includes(t.name)) setTrendIngredients(prev => [...prev, t.name]); }}
+                              disabled={trendIngredients.includes(t.name)}
+                              className={`text-xs px-2.5 py-1 rounded-lg border font-semibold shrink-0 disabled:opacity-30 transition-colors ${isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/60' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/60'}`}
+                            >+ Grafico</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Selettore ingredienti + grafico linee */}
+              <Card className={cardBg}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}><LineChartIcon className="w-4 h-4" /> Grafico per ingrediente</CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {trendIngredients.length > 0 && (
+                        <button onClick={() => setTrendIngredients([])} className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${isDinner ? 'border-[#334155] text-rose-400 hover:bg-rose-950/20' : 'border-[#EAE5DA] text-rose-500 hover:bg-rose-50'}`}>Rimuovi tutti</button>
+                      )}
+                      {trendIngredients.map((name, i) => (
+                        <span key={name} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: TREND_COLORS[i % TREND_COLORS.length] }}>
+                          {name}<button onClick={() => setTrendIngredients(prev => prev.filter(d => d !== name))} className="hover:opacity-70 ml-0.5"><X className="w-2.5 h-2.5" /></button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <input type="text" value={trendSearch} onChange={e => setTrendSearch(e.target.value)} placeholder="Cerca ingrediente…"
+                    className={`w-full px-3 py-2 rounded-xl border text-sm mt-2 ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA] placeholder:text-[#475569]' : 'border-[#EAE5DA] placeholder:text-gray-400'}`} />
+                </CardHeader>
+                <CardContent className="pt-0 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {trendTopIngredients.filter(i => i.name.toLowerCase().includes(trendSearch.toLowerCase())).map((ing) => {
+                      const isSelected = trendIngredients.includes(ing.name);
+                      const colorIdx = trendIngredients.indexOf(ing.name);
+                      return (
+                        <div key={ing.name} className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${isSelected ? (isDinner ? 'border-[#967D62]/60 bg-[#967D62]/10' : 'border-[#967D62]/60 bg-[#967D62]/5') : (isDinner ? 'border-[#334155] bg-[#0F172A]/40' : 'border-[#EAE5DA] bg-white')}`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isSelected && <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: TREND_COLORS[colorIdx % TREND_COLORS.length] }} />}
+                            <span className={`text-sm font-medium truncate ${textColor}`}>{ing.name}</span>
+                            <span className={`text-xs ${mutedText} shrink-0`}>{ing.total.toFixed(1)}{ing.unit}</span>
+                          </div>
+                          <button onClick={() => isSelected ? setTrendIngredients(prev => prev.filter(d => d !== ing.name)) : setTrendIngredients(prev => [...prev, ing.name])}
+                            disabled={!isSelected && trendIngredients.length >= 8}
+                            className={`text-xs px-3 py-1 rounded-lg font-semibold shrink-0 ml-2 transition-colors disabled:opacity-30 ${isSelected ? (isDinner ? 'bg-rose-900/30 text-rose-400' : 'bg-rose-50 text-rose-600') : (isDinner ? 'bg-[#967D62]/20 text-[#C4A882]' : 'bg-[#967D62]/10 text-[#967D62]')}`}
+                          >{isSelected ? 'Rimuovi' : 'Aggiungi'}</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {trendIngredients.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={trendChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                        <XAxis dataKey="period" tick={{ fontSize: 11, fill: chartColors.tick }} />
+                        <YAxis tick={{ fontSize: 11, fill: chartColors.tick }} />
+                        <Tooltip contentStyle={chartColors.tooltip} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        {trendIngredients.map((name, i) => (
+                          <Line key={name} type="monotone" dataKey={name} stroke={TREND_COLORS[i % TREND_COLORS.length]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <p className={`text-sm ${mutedText} text-center py-6`}>Seleziona uno o più ingredienti per visualizzare il grafico.</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Breakdown categorie nel tempo */}
+              <Card className={cardBg}>
+                <CardHeader className="pb-2">
+                  <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}><BarChart2 className="w-4 h-4" /> Categorie nel tempo</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={categoryTrendData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                      <XAxis dataKey="period" tick={{ fontSize: 11, fill: chartColors.tick }} />
+                      <YAxis tick={{ fontSize: 11, fill: chartColors.tick }} allowDecimals={false} />
+                      <Tooltip contentStyle={chartColors.tooltip} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="waste"     name="Scarto"            stackId="a" fill="#EF4444" />
+                      <Bar dataKey="personale" name="Pasto personale"   stackId="a" fill="#F59E0B" />
+                      <Bar dataKey="operativo" name="Consumo operativo" stackId="a" fill="#F97316" />
+                      <Bar dataKey="altro"     name="Altro"             stackId="a" fill="#94A3B8" radius={[4,4,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
         </>
       )}
     </main>
