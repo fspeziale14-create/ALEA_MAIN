@@ -2324,7 +2324,7 @@ function App() {
               <div className="space-y-6">
                 <div>
                   <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Recensioni</h1>
-                  <p className={`${mutedText} mt-1`}>Monitora e rispondi alle recensioni dei clienti.</p>
+                  <p className={`${mutedText} mt-1`}>Collega le recensioni agli ordini per capire cosa viene apprezzato o criticato — e agisci direttamente sul menu.</p>
                 </div>
                 <div className={`flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA] text-[#8C8A85]'}`}>
                   <Star className="w-12 h-12 mb-4 opacity-30" />
