@@ -177,6 +177,31 @@ export function PianificazioneView(props: PianificazioneViewProps) {
   const [extraCategory, setExtraCategory] = React.useState<'waste' | 'personale' | 'operativo' | 'altro'>('waste');
   const [extraNote, setExtraNote] = React.useState<string>('');
   const [extraDate, setExtraDate] = React.useState<string>(new Date().toISOString().split('T')[0]);
+  const [extraUnit, setExtraUnit] = React.useState<string>('');
+
+  // Unità compatibili per un'UdM base (multipli e sottomultipli)
+  const getCompatibleUnitsFor = (unit: string): string[] => {
+    if (unit === 'kg' || unit === 'g')   return ['g', 'kg'];
+    if (unit === 'l' || unit === 'ml' || unit === 'cl') return ['ml', 'cl', 'l'];
+    if (unit === 'pz' || unit === 'conf') return [unit]; // solo se stessa
+    return [unit];
+  };
+
+  // Converti qty da extraUnit a unità base dell'ingrediente per scalare correttamente
+  const convertExtraQtyToBase = (qty: number, fromUnit: string, toUnit: string): number => {
+    if (fromUnit === toUnit) return qty;
+    // g ↔ kg
+    if (fromUnit === 'g'  && toUnit === 'kg') return qty / 1000;
+    if (fromUnit === 'kg' && toUnit === 'g')  return qty * 1000;
+    // ml ↔ cl ↔ l
+    if (fromUnit === 'ml' && toUnit === 'cl') return qty / 10;
+    if (fromUnit === 'ml' && toUnit === 'l')  return qty / 1000;
+    if (fromUnit === 'cl' && toUnit === 'ml') return qty * 10;
+    if (fromUnit === 'cl' && toUnit === 'l')  return qty / 100;
+    if (fromUnit === 'l'  && toUnit === 'ml') return qty * 1000;
+    if (fromUnit === 'l'  && toUnit === 'cl') return qty * 100;
+    return qty;
+  };
   const [extraSaving, setExtraSaving] = React.useState(false);
   const [extraMsg, setExtraMsg] = React.useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [extraIngDropOpen, setExtraIngDropOpen] = React.useState(false);
@@ -199,10 +224,13 @@ export function PianificazioneView(props: PianificazioneViewProps) {
     try {
       const ing = ingredients.find((i: any) => i.id === extraIngId);
       if (!ing) throw new Error('Ingrediente non trovato');
-      const qty = Number(extraQty);
+      const rawQty = Number(extraQty);
+      const usedUnit = extraUnit || ing.unit;
+      // Converti alla unità base dell'ingrediente per scalare correttamente
+      const qtyInBase = convertExtraQtyToBase(rawQty, usedUnit, ing.unit);
       // Scala currentQty
       setIngredients((prev: any[]) => prev.map((i: any) =>
-        i.id === extraIngId ? { ...i, currentQty: (i.currentQty ?? 0) - qty } : i
+        i.id === extraIngId ? { ...i, currentQty: (i.currentQty ?? 0) - qtyInBase } : i
       ));
       // Salva su Supabase se loggato
       if (isLoggedIn && supabase) {
@@ -212,8 +240,8 @@ export function PianificazioneView(props: PianificazioneViewProps) {
             user_id: userId,
             ingredient_id: ing.id,
             ingredient_name: ing.name,
-            qty,
-            unit: ing.unit,
+            qty: rawQty,
+            unit: usedUnit,
             category: extraCategory,
             note: extraNote.trim() || null,
             recorded_at: extraDate,
@@ -804,7 +832,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                         );
                                                     }
                                                     return (
-                                                        <select value={newIngUnit} onChange={e => setNewIngUnit(e.target.value)} className={`w-20 rounded-md border text-sm px-2 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
+                                                        <select value={newIngUnit} onChange={e => setNewIngUnit(e.target.value)} className={`w-20 rounded-xl border text-sm px-2 py-1.5 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
                                                             {['g', 'kg', 'ml', 'l', 'cl', 'pz', 'conf'].map(u => <option key={u} value={u}>{u}</option>)}
                                                         </select>
                                                     );
@@ -852,7 +880,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                         {(newIngSupplierMode === 'new' || existingSuppliers.length === 0) ? (
                                                             <Input placeholder="Nome fornitore" value={newIngSupplierName} onChange={e => setNewIngSupplierName(e.target.value)} className={`w-full ${isDinner ? 'border-[#334155] bg-[#1E293B]' : 'border-[#EAE5DA]'}`} />
                                                         ) : (
-                                                            <select value={newIngSelectedSupplier} onChange={e => setNewIngSelectedSupplier(e.target.value)} className={`w-full rounded-md border text-sm px-2 h-9 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
+                                                            <select value={newIngSelectedSupplier} onChange={e => setNewIngSelectedSupplier(e.target.value)} className={`w-full rounded-xl border text-sm px-3 py-2 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
                                                                 <option value="">Seleziona fornitore</option>
                                                                 {existingSuppliers.map(s => <option key={s.name} value={s.name}>{s.name} ({s.qtyPerBox}{s.unit || newIngUnit}/scatolone)</option>)}
                                                             </select>
@@ -1069,7 +1097,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                     <Label className={`text-xs ${mutedText}`}>Resa (quantità prodotta per batch)</Label>
                                                     <Input type="number" placeholder="Es. 500" value={newPrepYieldQty} onChange={e => setNewPrepYieldQty(e.target.value)} className={isDinner ? 'border-[#334155] bg-[#1E293B]' : 'border-[#EAE5DA]'} />
                                                 </div>
-                                                <select value={newPrepYieldUnit} onChange={e => setNewPrepYieldUnit(e.target.value)} className={`w-20 rounded-md border text-sm px-2 h-9 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
+                                                <select value={newPrepYieldUnit} onChange={e => setNewPrepYieldUnit(e.target.value)} className={`w-20 rounded-xl border text-sm px-2 py-2 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
                                                     {['g', 'kg', 'ml', 'l', 'cl', 'pz', 'conf'].map(u => <option key={u} value={u}>{u}</option>)}
                                                 </select>
                                             </div>
@@ -1216,7 +1244,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                                             <div className="flex gap-1 items-center">
                                                                                 <Input type="number" placeholder="Qty" value={qtyPart || ''} onChange={e => setPrepIngQty(`${e.target.value}|${currentUnit || baseUnit}`)} className={`w-16 text-xs ${isDinner ? 'border-[#334155] bg-[#1E293B]' : 'border-[#EAE5DA]'}`} />
                                                                                 {compatUnits.length > 1 ? (
-                                                                                    <select value={currentUnit} onChange={e => setPrepIngQty(`${qtyPart || ''}|${e.target.value}`)} className={`w-14 rounded-md border text-xs px-1 h-8 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
+                                                                                    <select value={currentUnit} onChange={e => setPrepIngQty(`${qtyPart || ''}|${e.target.value}`)} className={`w-14 rounded-xl border text-xs px-1 py-1.5 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
                                                                                         {compatUnits.map(u => <option key={u} value={u}>{u}</option>)}
                                                                                     </select>
                                                                                 ) : (
@@ -1462,7 +1490,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                                                 <div className="flex gap-1 items-center">
                                                                                     <Input type="number" placeholder="Qty" value={editingRecipeQty} onChange={e => setEditingRecipeQty(e.target.value)} className={`w-16 text-xs ${isDinner ? 'border-[#334155] bg-[#1E293B]' : 'border-[#EAE5DA]'}`} />
                                                                                     {compatUnits.length > 1 ? (
-                                                                                        <select value={editingRecipePcsYield || baseUnit} onChange={e => setEditingRecipePcsYield(e.target.value)} className={`w-14 rounded-md border text-xs px-1 h-8 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
+                                                                                        <select value={editingRecipePcsYield || baseUnit} onChange={e => setEditingRecipePcsYield(e.target.value)} className={`w-14 rounded-xl border text-xs px-1 py-1.5 ${isDinner ? 'border-[#334155] bg-[#1E293B] text-[#F4F1EA]' : 'border-[#EAE5DA] bg-white text-[#2C2A28]'}`}>
                                                                                             {compatUnits.map(u => <option key={u} value={u}>{u}</option>)}
                                                                                         </select>
                                                                                     ) : (
@@ -1915,7 +1943,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                             <button
                               key={ing.id}
                               type="button"
-                              onClick={() => { setExtraIngId(ing.id); setExtraIngDropOpen(false); setExtraIngSearch(''); }}
+                              onClick={() => { setExtraIngId(ing.id); setExtraUnit(ing.unit); setExtraIngDropOpen(false); setExtraIngSearch(''); }}
                               className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                                 ing.id === extraIngId
                                   ? (isDinner ? 'bg-[#967D62]/20 text-[#F4F1EA]' : 'bg-[#967D62]/10 text-[#967D62]')
@@ -1932,21 +1960,36 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                 </div>
               </div>
 
-              {/* Quantità + data */}
+              {/* Quantità + unità + data */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>
-                    Quantità {extraIngId ? `(${ingredients.find((i: any) => i.id === extraIngId)?.unit ?? ''})` : ''}
-                  </Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={extraQty}
-                    onChange={e => setExtraQty(e.target.value)}
-                    placeholder="Es. 0.5"
-                    className={`${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
-                  />
+                  <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Quantità</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={extraQty}
+                      onChange={e => setExtraQty(e.target.value)}
+                      placeholder="Es. 0.5"
+                      className={`flex-1 ${isDinner ? 'border-[#334155] bg-[#0F172A]' : 'border-[#EAE5DA]'}`}
+                    />
+                    {extraIngId && (() => {
+                      const ing = ingredients.find((i: any) => i.id === extraIngId);
+                      const units = ing ? getCompatibleUnitsFor(ing.unit) : [];
+                      return units.length > 1 ? (
+                        <select
+                          value={extraUnit || ing?.unit || ''}
+                          onChange={e => setExtraUnit(e.target.value)}
+                          className={`px-3 py-2 rounded-xl border text-sm font-semibold ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA]' : 'bg-white border-[#EAE5DA] text-[#2C2A28]'}`}
+                        >
+                          {units.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      ) : (
+                        <span className={`flex items-center px-3 text-sm font-semibold ${mutedText}`}>{ing?.unit}</span>
+                      );
+                    })()}
+                  </div>
                 </div>
                 <div>
                   <Label className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2 block`}>Data</Label>
@@ -2139,7 +2182,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                     {ingredients.map((ing: any) => (
                       <div key={ing.id} className="flex items-center gap-3">
                         <span className={`flex-1 text-sm ${textColor}`}>{ing.name}</span>
-                        <span className={`text-xs ${mutedText} w-24 text-right`}>{ing.currentQty}{ing.unit}</span>
+                        <span className={`text-xs ${mutedText} w-24 text-right`}>{Math.round(ing.currentQty * 100) / 100}{ing.unit}</span>
                         <Input
                           type="number"
                           placeholder="Reale"
