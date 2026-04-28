@@ -7,11 +7,11 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Flame, Trash2, UtensilsCrossed, Wrench, HelpCircle,
   TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp,
-  Calendar, BarChart2
+  Calendar, BarChart2, LineChart as LineChartIcon, Plus, X
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell
+  ResponsiveContainer, Cell, LineChart, Line, Legend
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
