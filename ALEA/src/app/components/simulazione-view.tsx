@@ -432,8 +432,8 @@ export function SimulazioneView({
                             </p>
                           )}
                         </div>
-                        {/* Quadrante */}
-                        <div>
+                        {/* Quadrante — larghezza fissa per allineamento */}
+                        <div className="w-32 shrink-0">
                           <p className={`text-[10px] ${mutedText}`}>Quadrante</p>
                           <p className={`text-xs font-semibold ${quadrantColor(simQuadrant, isDinner)}`}>{quadrantLabel[simQuadrant]}</p>
                           {quadrantChanged && (
