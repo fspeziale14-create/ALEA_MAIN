@@ -202,7 +202,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
       const qty = Number(extraQty);
       // Scala currentQty
       setIngredients((prev: any[]) => prev.map((i: any) =>
-        i.id === extraIngId ? { ...i, currentQty: Math.max(0, (i.currentQty ?? 0) - qty) } : i
+        i.id === extraIngId ? { ...i, currentQty: (i.currentQty ?? 0) - qty } : i
       ));
       // Salva su Supabase se loggato
       if (isLoggedIn && supabase) {
@@ -389,7 +389,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
           saved++;
         }
         setIngredients((prev: any[]) => prev.map((i: any) =>
-          ingUpdates[i.id] !== undefined ? { ...i, currentQty: Math.max(0, (i.currentQty ?? 0) - ingUpdates[i.id]) } : i
+          ingUpdates[i.id] !== undefined ? { ...i, currentQty: (i.currentQty ?? 0) - ingUpdates[i.id] } : i
         ));
         setExtraImportMsg({ type: saved > 0 && skipped === 0 ? 'ok' : 'warn', msg: `Importate ${saved} registrazioni.${skipped > 0 ? ` ${skipped} righe saltate (ingrediente non trovato o dati mancanti).` : ''}` });
       } catch (err: any) {
@@ -401,6 +401,29 @@ export function PianificazioneView(props: PianificazioneViewProps) {
 
   // MCM tra due interi
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+
+  // Formatta un valore con la sua unità, convertendo automaticamente per evitare decimali < 1
+  const formatQtyAuto = (val: number, unit: string): string => {
+    const abs = Math.abs(val);
+    const sign = val < 0 ? '-' : val > 0 ? '+' : '';
+    if (unit === 'kg' && abs < 1 && abs > 0) return `${sign}${(abs * 1000).toFixed(0)}g`;
+    if (unit === 'l'  && abs < 1 && abs > 0) return `${sign}${(abs * 1000).toFixed(0)}ml`;
+    if (unit === 'cl' && abs < 1 && abs > 0) return `${sign}${(abs * 10).toFixed(0)}ml`;
+    if (abs < 0.01 && abs > 0) return `${sign}${(abs * 1000).toFixed(2)}m${unit}`;
+    return `${sign}${abs.toFixed(abs < 10 ? 3 : 1)}${unit}`;
+  };
+
+  // Formatta delta per piatto in pz/conf: invece di frazioni mostra rapporto intero
+  const formatPieceDelta = (deltaPerPortion: number, unit: string, totalPortions: number): string => {
+    if (Math.abs(deltaPerPortion) < 0.0001) return '~0';
+    const abs = Math.abs(deltaPerPortion);
+    const sign = deltaPerPortion < 0 ? '-' : '+';
+    if (abs >= 1) return `${sign}${abs.toFixed(1)} ${unit}/p`;
+    // Converti in "ogni N porzioni serve 1 pz in più/meno"
+    const portionsPerPiece = Math.round(1 / abs);
+    const direction = deltaPerPortion < 0 ? 'in meno' : 'in più';
+    return `ogni ~${portionsPerPiece} p: 1 ${unit} ${direction}`;
+  };
   const lcm = (a: number, b: number): number => (a * b) / gcd(a, b);
 
   // Dato un ingrediente a pz/conf, calcola il MCM di tutti i denominatori (portionsPerPiece)
@@ -955,19 +978,26 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                             <div className="space-y-2 max-h-80 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                                                 {/* Ingredienti acquistati */}
                                                 {ingredients.map(ing => {
-                                                    const pct = ing.idealQty > 0 ? (ing.currentQty / ing.idealQty) * 100 : 100;
-                                                    const color = pct > 50 ? 'bg-emerald-500' : pct > 20 ? 'bg-amber-500' : 'bg-red-500';
+                                                    const isNegative = ing.currentQty < 0;
+                                                    const pct = isNegative ? 0 : ing.idealQty > 0 ? (ing.currentQty / ing.idealQty) * 100 : 100;
+                                                    const color = isNegative ? 'bg-amber-500' : pct > 50 ? 'bg-emerald-500' : pct > 20 ? 'bg-amber-500' : 'bg-red-500';
+                                                    const borderCls = isNegative
+                                                      ? (isDinner ? 'bg-[#0F172A] border-amber-700/50' : 'bg-amber-50/50 border-amber-200')
+                                                      : (isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]');
                                                     return (
-                                                        <div key={ing.id} className={`p-3 rounded-lg border ${isDinner ? 'bg-[#0F172A] border-[#334155]' : 'bg-gray-50 border-[#EAE5DA]'}`}>
+                                                        <div key={ing.id} className={`p-3 rounded-lg border ${borderCls}`}>
                                                             <div className="flex justify-between items-center mb-1">
-                                                                <span className={`font-semibold text-sm ${textColor}`}>{ing.name}</span>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    {isNegative && <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                                                                    <span className={`font-semibold text-sm ${textColor}`}>{ing.name}</span>
+                                                                </div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`text-sm font-mono ${pct < 20 ? 'text-red-500' : pct < 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{floor2(ing.currentQty)}{ing.unit} / {floor2(ing.idealQty)}{ing.unit}</span>
+                                                                    <span className={`text-sm font-mono ${isNegative ? 'text-amber-500' : pct < 20 ? 'text-red-500' : pct < 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{floor2(ing.currentQty)}{ing.unit} / {floor2(ing.idealQty)}{ing.unit}</span>
                                                                     <button onClick={() => setIngredients(prev => prev.filter(i => i.id !== ing.id))} className="text-red-400 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                                                                 </div>
                                                             </div>
                                                             <div className={`w-full h-1.5 rounded-full ${isDinner ? 'bg-[#334155]' : 'bg-gray-200'}`}>
-                                                                <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                                                                <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
                                                             </div>
                                                         </div>
                                                     );
@@ -2199,15 +2229,15 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                             <div className="flex items-center gap-4 text-right shrink-0">
                               <div>
                                 <p className={`text-[10px] ${mutedText}`}>Teorico</p>
-                                <p className={`text-sm font-bold ${textColor}`}>{item.theoretical.toFixed(3)}{item.unit}</p>
+                                <p className={`text-sm font-bold ${textColor}`}>{formatQtyAuto(item.theoretical, item.unit).replace(/^[+-]/, '')}</p>
                               </div>
                               <div>
                                 <p className={`text-[10px] ${mutedText}`}>Reale</p>
-                                <p className={`text-sm font-bold ${textColor}`}>{item.real.toFixed(3)}{item.unit}</p>
+                                <p className={`text-sm font-bold ${textColor}`}>{formatQtyAuto(item.real, item.unit).replace(/^[+-]/, '')}</p>
                               </div>
                               <div>
                                 <p className={`text-[10px] ${mutedText}`}>Diff.</p>
-                                <p className={`text-sm font-bold ${diffColor}`}>{item.diff >= 0 ? '+' : ''}{item.diff.toFixed(3)}{item.unit} ({item.diffPct.toFixed(1)}%)</p>
+                                <p className={`text-sm font-bold ${diffColor}`}>{formatQtyAuto(item.diff, item.unit)} ({item.diffPct.toFixed(1)}%)</p>
                               </div>
                             </div>
                           </div>
@@ -2219,9 +2249,11 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                               {item.dishes.slice(0, 5).map((d: any) => (
                                 <div key={d.dish} className="flex items-center justify-between gap-3">
                                   <span className={`text-xs truncate flex-1 ${textColor}`}>{d.dish}</span>
-                                  <span className={`text-xs ${mutedText} shrink-0`}>{d.qtyPerPortion.toFixed(3)}{d.unit}/p × {d.frequency} ord.</span>
+                                  <span className={`text-xs ${mutedText} shrink-0`}>{formatQtyAuto(d.qtyPerPortion, d.unit).replace(/^[+-]/,'')}/p × {d.frequency} ord.</span>
                                   <span className={`text-xs font-semibold shrink-0 ${diffColor}`}>
-                                    {d.avgDeltaPerPortion >= 0 ? '+' : ''}{d.avgDeltaPerPortion.toFixed(3)}{d.unit}/p
+                                    {(['pz','conf'].includes(d.unit))
+                                      ? formatPieceDelta(d.avgDeltaPerPortion, d.unit, d.frequency)
+                                      : formatQtyAuto(d.avgDeltaPerPortion, d.unit) + '/p'}
                                   </span>
                                 </div>
                               ))}
