@@ -15,6 +15,7 @@ import {
   ResponsiveContainer, Legend
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { MENU_CATEGORIES } from '../constants';
 
 // ── TIPI ─────────────────────────────────────────────────────────
 
@@ -690,128 +691,89 @@ export function StoricoView({
             </div>
           ) : (
             <>
-              {/* Trend automatici rilevati */}
-              {autoTrends.length > 0 && (
-                <Card className={cardBg}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
-                      <TrendingUp className="w-4 h-4" /> Tendenze rilevate automaticamente
-                    </CardTitle>
-                    <p className={`text-xs ${mutedText}`}>
-                      Piatti con variazione costante negli ultimi 3 periodi. Aggiornato ad ogni nuovo periodo salvato.
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {autoTrends.map((t, i) => {
-                        const isUp = t.direction === 'up';
-                        const isGoodUp = t.metric === 'marginPct' || t.metric === 'frequency';
-                        const isPositive = isUp ? isGoodUp : !isGoodUp;
-                        const color = isPositive
-                          ? (isDinner ? 'text-emerald-400' : 'text-emerald-600')
-                          : (isDinner ? 'text-rose-400' : 'text-rose-600');
-                        const bg = isPositive
-                          ? (isDinner ? 'bg-emerald-950/20 border-emerald-800/30' : 'bg-emerald-50 border-emerald-100')
-                          : (isDinner ? 'bg-rose-950/20 border-rose-800/30' : 'bg-rose-50 border-rose-100');
-                        const Icon = isUp ? TrendingUp : TrendingDown;
-                        return (
-                          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${bg}`}>
-                            <Icon className={`w-4 h-4 shrink-0 ${color}`} />
-                            <div className="flex-1 min-w-0">
-                              <span className={`font-semibold text-sm ${textColor}`}>{t.name}</span>
-                              <span className={`text-xs ml-2 ${mutedText}`}>{t.category}</span>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className={`text-xs font-semibold ${color}`}>
-                                {isUp ? '▲' : '▼'} {t.metricLabel}
-                              </p>
-                              <p className={`text-xs ${mutedText}`}>
-                                {t.pctChange > 0 ? '+' : ''}{t.pctChange.toFixed(1)}% su {t.values.length} periodi
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => {
-                                if (!trendDishes.includes(t.name) && trendDishes.length < 10) {
-                                  setTrendDishes(prev => [...prev, t.name]);
-                                }
-                              }}
-                              disabled={trendDishes.includes(t.name)}
-                              className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
-                                isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/60 hover:text-[#C4A882]' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/60 hover:text-[#967D62]'
-                              }`}
-                            >
-                              + Grafico
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Selettore piatti */}
+              {/* Selettore piatti stile gestione disponibilità */}
               <Card className={cardBg}>
-                <CardContent className="pt-5">
-                  <div className="flex items-start gap-3 flex-wrap">
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-semibold uppercase tracking-wider ${mutedText} mb-2`}>Piatti nel grafico</p>
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {trendDishes.map((name, i) => (
-                          <span key={name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
-                            style={{ backgroundColor: TREND_COLORS[i % TREND_COLORS.length] }}>
-                            {name}
-                            <button onClick={() => setTrendDishes(prev => prev.filter(d => d !== name))} className="hover:opacity-70 transition-opacity">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                        {trendDishes.length === 0 && (
-                          <span className={`text-xs ${mutedText}`}>Nessun piatto selezionato — aggiungine uno dal menu.</span>
-                        )}
-                      </div>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                      <Plus className="w-4 h-4" /> Seleziona piatti da graficare
+                    </CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {trendDishes.length > 0 && (
+                        <button onClick={() => setTrendDishes([])} className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${isDinner ? 'border-[#334155] text-rose-400 hover:bg-rose-950/20' : 'border-[#EAE5DA] text-rose-500 hover:bg-rose-50'}`}>
+                          Rimuovi tutti
+                        </button>
+                      )}
+                      {trendDishes.map((name, i) => (
+                        <span key={name} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-white"
+                          style={{ backgroundColor: TREND_COLORS[i % TREND_COLORS.length] }}>
+                          {name}
+                          <button onClick={() => setTrendDishes(prev => prev.filter(d => d !== name))} className="hover:opacity-70 ml-0.5">
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
                     </div>
-                    {/* Dropdown aggiunta piatto */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setTrendDropdownOpen(v => !v)}
-                        disabled={trendDishes.length >= 10}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors disabled:opacity-40 ${
-                          isDinner ? 'border-[#334155] text-[#F4F1EA] hover:border-[#967D62]/60' : 'border-[#EAE5DA] text-[#2C2A28] hover:border-[#967D62]/60'
-                        }`}
-                      >
-                        <Plus className="w-4 h-4" /> Aggiungi piatto
-                      </button>
-                      {trendDropdownOpen && (
-                        <div className={`absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border shadow-xl ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'}`}>
-                          <div className="p-2">
-                            <input
-                              type="text"
-                              value={trendSearch}
-                              onChange={e => setTrendSearch(e.target.value)}
-                              placeholder="Cerca piatto…"
-                              autoFocus
-                              className={`w-full px-3 py-2 rounded-lg border text-sm ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA] placeholder:text-[#475569]' : 'border-[#EAE5DA] placeholder:text-gray-400'}`}
-                            />
-                          </div>
-                          <div className="max-h-56 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                            {filteredDishNames.length === 0 ? (
-                              <p className={`text-xs text-center py-4 ${mutedText}`}>Nessun piatto trovato.</p>
-                            ) : filteredDishNames.map(name => (
-                              <button key={name} onClick={() => { setTrendDishes(prev => [...prev, name]); setTrendDropdownOpen(false); setTrendSearch(''); }}
-                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${isDinner ? `text-[#F4F1EA] ${rowHover}` : `text-[#2C2A28] ${rowHover}`}`}>
-                                {name}
-                              </button>
-                            ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={trendSearch}
+                    onChange={e => setTrendSearch(e.target.value)}
+                    placeholder="Cerca piatto…"
+                    className={`w-full px-3 py-2 rounded-xl border text-sm mt-2 ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#F4F1EA] placeholder:text-[#475569]' : 'border-[#EAE5DA] placeholder:text-gray-400'}`}
+                  />
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-4 max-h-[50vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {MENU_CATEGORIES.filter(cat => cat.name !== 'COCKTAILS & BEVERAGE').map(cat => {
+                      const catDishes = cat.items.filter(name =>
+                        allDishNames.includes(name) &&
+                        name.toLowerCase().includes(trendSearch.toLowerCase())
+                      );
+                      if (catDishes.length === 0) return null;
+                      return (
+                        <div key={cat.name}>
+                          <p className={`text-[10px] font-bold uppercase tracking-wider ${mutedText} mb-2`}>{cat.name}</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {catDishes.map(name => {
+                              const isSelected = trendDishes.includes(name);
+                              const colorIdx = trendDishes.indexOf(name);
+                              return (
+                                <div key={name} className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${
+                                  isSelected
+                                    ? (isDinner ? 'border-[#967D62]/60 bg-[#967D62]/10' : 'border-[#967D62]/60 bg-[#967D62]/5')
+                                    : (isDinner ? 'border-[#334155] bg-[#0F172A]/40' : 'border-[#EAE5DA] bg-white')
+                                }`}>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {isSelected && (
+                                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: TREND_COLORS[colorIdx % TREND_COLORS.length] }} />
+                                    )}
+                                    <span className={`text-sm font-medium truncate ${textColor}`}>{name}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setTrendDishes(prev => prev.filter(d => d !== name));
+                                      } else if (trendDishes.length < 10) {
+                                        setTrendDishes(prev => [...prev, name]);
+                                      }
+                                    }}
+                                    disabled={!isSelected && trendDishes.length >= 10}
+                                    className={`text-xs px-3 py-1 rounded-lg font-semibold shrink-0 ml-2 transition-colors disabled:opacity-30 ${
+                                      isSelected
+                                        ? (isDinner ? 'bg-rose-900/30 text-rose-400 hover:bg-rose-900/50' : 'bg-rose-50 text-rose-600 hover:bg-rose-100')
+                                        : (isDinner ? 'bg-[#967D62]/20 text-[#C4A882] hover:bg-[#967D62]/30' : 'bg-[#967D62]/10 text-[#967D62] hover:bg-[#967D62]/20')
+                                    }`}
+                                  >
+                                    {isSelected ? 'Rimuovi' : 'Aggiungi'}
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                      )}
-                    </div>
-                    {trendDishes.length > 0 && (
-                      <button onClick={() => setTrendDishes([])} className={`text-xs px-3 py-2 rounded-lg border transition-colors ${isDinner ? 'border-[#334155] text-rose-400 hover:bg-rose-950/20' : 'border-[#EAE5DA] text-rose-500 hover:bg-rose-50'}`}>
-                        Svuota
-                      </button>
-                    )}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -949,6 +911,67 @@ export function StoricoView({
                   </div>
                 );
               })()}
+
+              {/* Trend automatici rilevati */}
+              {autoTrends.length > 0 && (
+                <Card className={cardBg}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className={`text-base flex items-center gap-2 ${accentColor}`}>
+                      <TrendingUp className="w-4 h-4" /> Tendenze rilevate automaticamente
+                    </CardTitle>
+                    <p className={`text-xs ${mutedText}`}>
+                      Piatti con variazione costante negli ultimi 3 periodi. Aggiornato ad ogni nuovo periodo salvato.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {autoTrends.map((t, i) => {
+                        const isUp = t.direction === 'up';
+                        const isGoodUp = t.metric === 'marginPct' || t.metric === 'frequency';
+                        const isPositive = isUp ? isGoodUp : !isGoodUp;
+                        const color = isPositive
+                          ? (isDinner ? 'text-emerald-400' : 'text-emerald-600')
+                          : (isDinner ? 'text-rose-400' : 'text-rose-600');
+                        const bg = isPositive
+                          ? (isDinner ? 'bg-emerald-950/20 border-emerald-800/30' : 'bg-emerald-50 border-emerald-100')
+                          : (isDinner ? 'bg-rose-950/20 border-rose-800/30' : 'bg-rose-50 border-rose-100');
+                        const Icon = isUp ? TrendingUp : TrendingDown;
+                        return (
+                          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${bg}`}>
+                            <Icon className={`w-4 h-4 shrink-0 ${color}`} />
+                            <div className="flex-1 min-w-0">
+                              <span className={`font-semibold text-sm ${textColor}`}>{t.name}</span>
+                              <span className={`text-xs ml-2 ${mutedText}`}>{t.category}</span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className={`text-xs font-semibold ${color}`}>
+                                {isUp ? '▲' : '▼'} {t.metricLabel}
+                              </p>
+                              <p className={`text-xs ${mutedText}`}>
+                                {t.pctChange > 0 ? '+' : ''}{t.pctChange.toFixed(1)}% su {t.values.length} periodi
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (!trendDishes.includes(t.name) && trendDishes.length < 10) {
+                                  setTrendDishes(prev => [...prev, t.name]);
+                                }
+                              }}
+                              disabled={trendDishes.includes(t.name)}
+                              className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
+                                isDinner ? 'border-[#334155] text-[#94A3B8] hover:border-[#967D62]/60 hover:text-[#C4A882]' : 'border-[#EAE5DA] text-[#8C8A85] hover:border-[#967D62]/60 hover:text-[#967D62]'
+                              }`}
+                            >
+                              + Grafico
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
             </>
           )}
         </div>
