@@ -421,9 +421,9 @@ export function StoricoView({
                           </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
                 <button
                   disabled={!compareA || !compareB}
                   onClick={() => { setCompareDropA(false); setCompareDropB(false); setShowComparison(true); }}
@@ -507,13 +507,32 @@ export function StoricoView({
                     <span className="text-right w-20">{compareSort === 'score' ? 'Score' : compareSort === 'guadagno' ? 'Guadagno' : 'Ricavo'}</span>
                     <span className="text-right w-28">Quadrante</span>
                   </div>
-                  {[...comparison]
-                    .sort((a, b) => Math.abs(getCompareValue(b.b, compareSort) - getCompareValue(b.a, compareSort)) - Math.abs(getCompareValue(a.b, compareSort) - getCompareValue(a.a, compareSort)))
-                    .map(c => {
-                    const marginUp = c.marginDiff > 0;
-                    const freqUp = c.freqDiff > 0;
+                  {(() => {
+                    const sorted = [...comparison].sort((a, b) =>
+                      Math.abs(getCompareValue(b.b, compareSort) - getCompareValue(b.a, compareSort)) -
+                      Math.abs(getCompareValue(a.b, compareSort) - getCompareValue(a.a, compareSort))
+                    );
+                    const diffs = sorted.map(c => getCompareValue(c.b, compareSort) - getCompareValue(c.a, compareSort));
+                    const maxPos = Math.max(...diffs.filter(d => d > 0), 1);
+                    const maxNeg = Math.abs(Math.min(...diffs.filter(d => d < 0), -1));
+                    const metricColor = (diff: number): string => {
+                      if (diff === 0) return isDinner ? '#94A3B8' : '#8C8A85';
+                      if (diff > 0) {
+                        const t = Math.min(diff / maxPos, 1);
+                        if (t < 0.25) return '#6EE7B7';
+                        if (t < 0.5)  return '#34D399';
+                        if (t < 0.75) return '#10B981';
+                        return '#059669';
+                      } else {
+                        const t = Math.min(Math.abs(diff) / maxNeg, 1);
+                        if (t < 0.25) return '#FCA5A5';
+                        if (t < 0.5)  return '#F87171';
+                        if (t < 0.75) return '#EF4444';
+                        return '#DC2626';
+                      }
+                    };
+                    return sorted.map(c => {
                     const metricDiff = getCompareValue(c.b, compareSort) - getCompareValue(c.a, compareSort);
-                    const metricUp = metricDiff > 0;
                     const metricLabel = compareSort === 'score'
                       ? `${metricDiff > 0 ? '+' : ''}${metricDiff.toFixed(0)}`
                       : `${metricDiff > 0 ? '+' : ''}€${metricDiff.toFixed(0)}`;
@@ -526,23 +545,23 @@ export function StoricoView({
                           <p className={`text-sm font-semibold ${textColor}`}>{c.name}</p>
                           <p className={`text-xs ${mutedText}`}>{c.category}</p>
                         </div>
-                        {/* Margine */}
+                        {/* Margine: verde/slate/rosso fisso */}
                         <div className="text-right w-20">
-                          <p className={`text-sm font-bold ${marginUp ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : (isDinner ? 'text-rose-400' : 'text-rose-600')}`}>
+                          <p className={`text-sm font-bold ${c.marginDiff > 0 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : c.marginDiff < 0 ? (isDinner ? 'text-rose-400' : 'text-rose-600') : mutedText}`}>
                             {c.marginDiff > 0 ? '+' : ''}{c.marginDiff.toFixed(1)}pp
                           </p>
                           <p className={`text-xs ${mutedText}`}>{c.a.marginPct.toFixed(1)}% → {c.b.marginPct.toFixed(1)}%</p>
                         </div>
-                        {/* Ordini */}
+                        {/* Ordini: verde/slate/rosso fisso */}
                         <div className="text-right w-16">
-                          <p className={`text-sm font-bold ${freqUp ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : c.freqDiff < 0 ? (isDinner ? 'text-rose-400' : 'text-rose-600') : mutedText}`}>
+                          <p className={`text-sm font-bold ${c.freqDiff > 0 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : c.freqDiff < 0 ? (isDinner ? 'text-rose-400' : 'text-rose-600') : mutedText}`}>
                             {c.freqDiff > 0 ? '+' : ''}{c.freqDiff}
                           </p>
                           <p className={`text-xs ${mutedText}`}>{c.a.frequency} → {c.b.frequency}</p>
                         </div>
-                        {/* Metrica selezionata */}
+                        {/* Metrica: colore gradiente proporzionale */}
                         <div className="text-right w-20">
-                          <p className={`text-sm font-bold ${metricUp ? accentColor : metricDiff < 0 ? (isDinner ? 'text-rose-400' : 'text-rose-600') : mutedText}`}>
+                          <p className="text-sm font-bold" style={{ color: metricColor(metricDiff) }}>
                             {metricLabel}
                           </p>
                           <p className={`text-xs ${mutedText}`}>{metricBase}</p>
@@ -560,7 +579,8 @@ export function StoricoView({
                         </div>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
                 </div>
               )}
             </CardContent>
