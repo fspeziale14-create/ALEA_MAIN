@@ -104,6 +104,7 @@ export function StoricoView({
   const [compareB, setCompareB] = useState<string | null>(null);
   const [compareDropA, setCompareDropA] = useState(false);
   const [compareDropB, setCompareDropB] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
 
   // Trend: piatti selezionati per i grafici
   const [trendDishes, setTrendDishes] = useState<string[]>([]);
@@ -239,58 +240,68 @@ export function StoricoView({
   const correlations = detectCorrelations();
 
   // ── RILEVAMENTO TREND AUTOMATICO ────────────────────────────
-  // Usa solo gli ultimi 3 periodi — più realistico e azionabile
+  // Parte dagli ultimi 3 periodi, poi estende indietro finché il trend continua
   const autoTrends = useMemo(() => {
     if (chronoSnapshots.length < 3) return [];
-    // Solo gli ultimi 3 periodi cronologici
-    const periods = chronoSnapshots.slice(-3);
-    const allNames = Array.from(new Set(periods.flatMap(s => s.data.dishes.map(d => d.name))));
+    const allNames = Array.from(new Set(chronoSnapshots.flatMap(s => s.data.dishes.map(d => d.name))));
+    const metricLabels = { frequency: 'frequenza ordini', marginPct: 'margine %', ingredientCost: 'costo ingredienti' };
 
     const results: Array<{
-      name: string;
-      category: string;
+      name: string; category: string;
       metric: 'frequency' | 'marginPct' | 'ingredientCost';
-      metricLabel: string;
-      direction: 'up' | 'down';
+      metricLabel: string; direction: 'up' | 'down';
       values: Array<{ period: string; value: number }>;
-      pctChange: number;
+      pctChange: number; periodsCount: number;
     }> = [];
 
     allNames.forEach(name => {
-      const series = periods.map(s => {
-        const d = s.data.dishes.find(dd => dd.name === name);
-        return d ? { period: s.label, frequency: d.frequency, marginPct: d.marginPct, ingredientCost: d.ingredientCost } : null;
-      }).filter(Boolean) as Array<{ period: string; frequency: number; marginPct: number; ingredientCost: number }>;
-
-      if (series.length < 3) return;
-      const cat = periods[0].data.dishes.find(d => d.name === name)?.category ?? '';
+      const cat = chronoSnapshots[chronoSnapshots.length - 1].data.dishes.find(d => d.name === name)?.category ?? '';
 
       (['frequency', 'marginPct', 'ingredientCost'] as const).forEach(metric => {
-        const metricLabels = { frequency: 'frequenza ordini', marginPct: 'margine %', ingredientCost: 'costo ingredienti' };
-        const vals = series.map(s => ({ period: s.period, value: s[metric] }));
-        // Controlla se monotonamente crescente o decrescente
-        let alwaysUp = true, alwaysDown = true;
-        for (let i = 1; i < vals.length; i++) {
-          if (vals[i].value <= vals[i-1].value) alwaysUp = false;
-          if (vals[i].value >= vals[i-1].value) alwaysDown = false;
+        // Build full series for this metric
+        const fullSeries = chronoSnapshots.map(s => {
+          const d = s.data.dishes.find(dd => dd.name === name);
+          return d ? { period: s.label, value: d[metric] as number } : null;
+        }).filter(Boolean) as Array<{ period: string; value: number }>;
+
+        if (fullSeries.length < 3) return;
+
+        // Check last 3 first
+        const last3 = fullSeries.slice(-3);
+        const isUpLast3   = last3[0].value < last3[1].value && last3[1].value < last3[2].value;
+        const isDownLast3 = last3[0].value > last3[1].value && last3[1].value > last3[2].value;
+        if (!isUpLast3 && !isDownLast3) return;
+
+        const direction = isUpLast3 ? 'up' : 'down';
+
+        // Extend backwards: how many consecutive periods confirm the same trend?
+        let startIdx = fullSeries.length - 3;
+        while (startIdx > 0) {
+          const prev = fullSeries[startIdx - 1];
+          const curr = fullSeries[startIdx];
+          const continues = direction === 'up' ? prev.value < curr.value : prev.value > curr.value;
+          if (!continues) break;
+          startIdx--;
         }
-        if (!alwaysUp && !alwaysDown) return;
-        // Solo se la variazione totale è significativa
-        const first = vals[0].value, last = vals[vals.length-1].value;
+
+        const trendSeries = fullSeries.slice(startIdx);
+        const first = trendSeries[0].value;
+        const last  = trendSeries[trendSeries.length - 1].value;
         if (first === 0) return;
         const pctChange = ((last - first) / Math.abs(first)) * 100;
-        if (Math.abs(pctChange) < 5) return; // ignora variazioni minime
+        if (Math.abs(pctChange) < 5) return;
+
         results.push({
           name, category: cat,
           metric, metricLabel: metricLabels[metric],
-          direction: alwaysUp ? 'up' : 'down',
-          values: vals,
+          direction,
+          values: trendSeries,
           pctChange,
+          periodsCount: trendSeries.length,
         });
       });
     });
 
-    // Ordina per variazione % assoluta decrescente
     return results.sort((a, b) => Math.abs(b.pctChange) - Math.abs(a.pctChange));
   }, [chronoSnapshots]);
 
@@ -386,6 +397,7 @@ export function StoricoView({
                                   disabled={isOther}
                                   onClick={() => {
                                     side === 'A' ? setCompareA(s.id) : setCompareB(s.id);
+                                    setShowComparison(false);
                                     setOpenDrop(false);
                                   }}
                                   className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
@@ -407,7 +419,7 @@ export function StoricoView({
                 </div>
                 <button
                   disabled={!compareA || !compareB}
-                  onClick={() => { setCompareDropA(false); setCompareDropB(false); }}
+                  onClick={() => { setCompareDropA(false); setCompareDropB(false); setShowComparison(true); }}
                   className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     isDinner ? 'bg-[#967D62] hover:bg-[#7A654E] text-white' : 'bg-[#967D62] hover:bg-[#7A654E] text-white'
                   }`}
@@ -422,7 +434,7 @@ export function StoricoView({
       )}
 
       {/* ── RISULTATI CONFRONTO ── */}
-      {activeTab === 'confronto' && compareA && compareB && comparison && (
+      {activeTab === 'confronto' && showComparison && compareA && compareB && comparison && (
         <div className="space-y-4">
           {/* KPI confronto */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -614,7 +626,7 @@ export function StoricoView({
                             ))}
                           </div>
                         </div>
-                        <div className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 pb-2 border-b ${divider} text-xs font-bold uppercase tracking-wider ${mutedText}`}>
+                        <div className={`hidden sm:grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 pb-2 border-b ${divider} text-xs font-bold uppercase tracking-wider ${mutedText}`}>
                           <span>Piatto</span>
                           <span className="text-right w-16">Margine</span>
                           <span className="text-right w-16">Ordini</span>
@@ -630,17 +642,35 @@ export function StoricoView({
                               ? (d.score != null ? d.score.toFixed(0) : '—')
                               : `€${val.toFixed(0)}`;
                             return (
-                          <div key={d.name} className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
-                            <div>
-                              <p className={`text-sm font-medium ${textColor}`}>{d.name}</p>
-                              <p className={`text-xs ${mutedText}`}>{d.category}</p>
+                          <div key={d.name} className={`py-2 px-1 rounded-lg ${rowHover} transition-colors`}>
+                            {/* Mobile: stacked */}
+                            <div className="flex items-center justify-between gap-2 sm:hidden">
+                              <div className="min-w-0 flex-1">
+                                <p className={`text-sm font-medium truncate ${textColor}`}>{d.name}</p>
+                                <p className={`text-[10px] ${mutedText}`}>{d.category}</p>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0 text-right">
+                                <div>
+                                  <p className={`text-xs ${mutedText}`}>Margine</p>
+                                  <p className={`text-sm font-bold ${d.hasMissingCosts ? mutedText : d.marginPct >= 60 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : d.marginPct >= 40 ? accentColor : (isDinner ? 'text-rose-400' : 'text-rose-600')}`}>{d.hasMissingCosts ? '—' : `${d.marginPct.toFixed(1)}%`}</p>
+                                </div>
+                                <div>
+                                  <p className={`text-xs ${mutedText}`}>{detailSort === 'score' ? 'Score' : detailSort === 'guadagno' ? 'Guad.' : 'Ric.'}</p>
+                                  <p className={`text-sm font-bold ${accentColor}`}>{valLabel}</p>
+                                </div>
+                              </div>
                             </div>
-                            <p className={`text-sm font-bold text-right w-16 ${d.hasMissingCosts ? mutedText : d.marginPct >= 60 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : d.marginPct >= 40 ? accentColor : (isDinner ? 'text-rose-400' : 'text-rose-600')}`}>
-                              {d.hasMissingCosts ? '—' : `${d.marginPct.toFixed(1)}%`}
-                            </p>
-                            <p className={`text-sm font-bold text-right w-16 ${textColor}`}>{d.frequency > 0 ? d.frequency : '—'}</p>
-                            <p className={`text-sm font-bold text-right w-20 ${accentColor}`}>{valLabel}</p>
-                            <p className={`text-xs font-semibold text-right w-24 ${quadrantColor(d.quadrant, isDinner)}`}>{quadrantLabel[d.quadrant]}</p>
+                            {/* Desktop: grid */}
+                            <div className={`hidden sm:grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center`}>
+                              <div>
+                                <p className={`text-sm font-medium ${textColor}`}>{d.name}</p>
+                                <p className={`text-xs ${mutedText}`}>{d.category}</p>
+                              </div>
+                              <p className={`text-sm font-bold text-right w-16 ${d.hasMissingCosts ? mutedText : d.marginPct >= 60 ? (isDinner ? 'text-emerald-400' : 'text-emerald-600') : d.marginPct >= 40 ? accentColor : (isDinner ? 'text-rose-400' : 'text-rose-600')}`}>{d.hasMissingCosts ? '—' : `${d.marginPct.toFixed(1)}%`}</p>
+                              <p className={`text-sm font-bold text-right w-16 ${textColor}`}>{d.frequency > 0 ? d.frequency : '—'}</p>
+                              <p className={`text-sm font-bold text-right w-20 ${accentColor}`}>{valLabel}</p>
+                              <p className={`text-xs font-semibold text-right w-24 ${quadrantColor(d.quadrant, isDinner)}`}>{quadrantLabel[d.quadrant]}</p>
+                            </div>
                           </div>
                             );
                           })}
@@ -937,18 +967,14 @@ export function StoricoView({
                           : (isDinner ? 'bg-rose-950/20 border-rose-800/30' : 'bg-rose-50 border-rose-100');
                         const Icon = isUp ? TrendingUp : TrendingDown;
                         return (
-                          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${bg}`}>
-                            <Icon className={`w-4 h-4 shrink-0 ${color}`} />
+                          <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${bg}`}>
+                            <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${color}`} />
                             <div className="flex-1 min-w-0">
-                              <span className={`font-semibold text-sm ${textColor}`}>{t.name}</span>
-                              <span className={`text-xs ml-2 ${mutedText}`}>{t.category}</span>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className={`text-xs font-semibold ${color}`}>
-                                {isUp ? '▲' : '▼'} {t.metricLabel}
-                              </p>
-                              <p className={`text-xs ${mutedText}`}>
-                                {t.pctChange > 0 ? '+' : ''}{t.pctChange.toFixed(1)}% su {t.values.length} periodi
+                              <p className={`font-semibold text-sm ${textColor} truncate`}>{t.name}</p>
+                              <p className={`text-xs ${mutedText}`}>{t.category}</p>
+                              <p className={`text-xs font-semibold mt-0.5 ${color}`}>
+                                {isUp ? '▲' : '▼'} {t.metricLabel} &nbsp;
+                                <span className={`font-normal ${mutedText}`}>{t.pctChange > 0 ? '+' : ''}{t.pctChange.toFixed(1)}% · {(t as any).periodsCount ?? t.values.length} periodi consecutivi</span>
                               </p>
                             </div>
                             <button
