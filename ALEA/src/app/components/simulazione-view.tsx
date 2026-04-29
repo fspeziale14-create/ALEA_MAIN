@@ -348,9 +348,15 @@ export function SimulazioneView({
           )}
 
           {/* Info soglie */}
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#94A3B8]' : 'bg-gray-50 border-[#EAE5DA] text-[#8C8A85]'}`}>
-            <Info className="w-3.5 h-3.5 shrink-0" />
-            Soglie quadrante fisse del periodo — Margine mediana: <strong className={textColor}>{baseMedians.margin.toFixed(1)}%</strong>, Frequenza mediana: <strong className={textColor}>{baseMedians.freq.toFixed(0)}</strong>
+          <div className={`px-3 py-2 rounded-lg border text-xs ${isDinner ? 'bg-[#0F172A] border-[#334155] text-[#94A3B8]' : 'bg-gray-50 border-[#EAE5DA] text-[#8C8A85]'}`}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Info className="w-3.5 h-3.5 shrink-0" />
+              <span className="font-semibold">Soglie quadrante fisse del periodo</span>
+            </div>
+            <div className="flex gap-4 ml-5">
+              <span>Margine mediana: <strong className={textColor}>{baseMedians.margin.toFixed(1)}%</strong></span>
+              <span>Frequenza mediana: <strong className={textColor}>{baseMedians.freq.toFixed(0)}</strong></span>
+            </div>
           </div>
 
           {/* Lista piatti */}
