@@ -1391,7 +1391,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                             <button onClick={() => setEditingRecipeDish(isEditing ? null : dish)} className={`flex-1 flex items-center justify-between px-4 py-2.5 text-left transition-colors ${isEditing ? (isDinner ? 'text-[#F4F1EA]' : 'text-[#2C2A28]') : (isDinner ? 'text-[#94A3B8] hover:text-[#F4F1EA]' : 'text-[#8C8A85] hover:text-[#2C2A28]')}`}>
                                                                 <span>{dish}</span>
                                                                 <span className="flex items-center gap-2">
-                                                                    {dishRecipe.length > 0 && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDinner ? 'bg-[#967D62]/20 text-[#967D62]' : 'bg-[#967D62]/10 text-[#967D62]'}`}>{dishRecipe.length} ing.</span>}
+                                                                    {dishRecipe.length > 0 && <span className={`text-[10px] font-bold w-10 h-10 flex items-center justify-center rounded-full shrink-0 ${isDinner ? 'bg-[#967D62]/20 text-[#967D62]' : 'bg-[#967D62]/10 text-[#967D62]'}`}>{dishRecipe.length}<br/>ing.</span>}
                                                                     {isEditing ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                                                 </span>
                                                             </button>
@@ -2233,14 +2233,16 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                       </div>
                     )}
                     {/* Soglia */}
-                    <div className="flex items-center gap-3">
-                      <span className={`text-xs font-semibold uppercase tracking-wider shrink-0 ${mutedText}`}>Soglia normalità</span>
-                      <input type="range" min={1} max={20} step={1} value={verifyThreshold}
-                        onChange={e => setVerifyThreshold(Number(e.target.value))}
-                        className={`flex-1 h-1 rounded-full appearance-none cursor-pointer accent-[#967D62] ${isDinner ? '[&::-webkit-slider-runnable-track]:bg-[#475569]' : '[&::-webkit-slider-runnable-track]:bg-[#B8B2A8]'} [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-[#967D62]`}
-                      />
-                      <span className={`text-xs font-bold w-8 shrink-0 text-right ${textColor}`}>{verifyThreshold}%</span>
-                      <span className={`text-xs ${mutedText}`}>scostamenti sotto questa soglia sono considerati normali</span>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-semibold uppercase tracking-wider shrink-0 ${mutedText}`}>Soglia normalità</span>
+                        <input type="range" min={1} max={20} step={1} value={verifyThreshold}
+                          onChange={e => setVerifyThreshold(Number(e.target.value))}
+                          className={`flex-1 h-1 rounded-full appearance-none cursor-pointer accent-[#967D62] ${isDinner ? '[&::-webkit-slider-runnable-track]:bg-[#475569]' : '[&::-webkit-slider-runnable-track]:bg-[#B8B2A8]'} [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-thumb]:mt-[-6px] [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-[#967D62]`}
+                        />
+                        <span className={`text-xs font-bold w-8 shrink-0 text-right ${textColor}`}>{verifyThreshold}%</span>
+                      </div>
+                      <p className={`text-xs ${mutedText}`}>Scostamenti sotto questa soglia sono considerati normali</p>
                     </div>
                   </div>
 
