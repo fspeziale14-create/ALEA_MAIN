@@ -339,7 +339,7 @@ export function ConsumiView({
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: chartColors.tick }} />
                   <YAxis tick={{ fontSize: 11, fill: chartColors.tick }} allowDecimals={false} />
-                  <Tooltip contentStyle={chartColors.tooltip} formatter={(v: any) => [v, 'Registrazioni']} />
+                  <Tooltip contentStyle={chartColors.tooltip} formatter={(v: any) => [v, 'Registrazioni']} cursor={false} />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                     {monthlyTrend.map((_, i) => (
                       <Cell key={i} fill={i === monthlyTrend.length - 1 ? '#967D62' : (isDinner ? '#475569' : '#C8C2B8')} />
@@ -437,27 +437,24 @@ export function ConsumiView({
                 <p className={`text-sm ${mutedText} py-4 text-center`}>Nessuna registrazione nel periodo selezionato.</p>
               ) : (
                 <div className="space-y-1">
-                  {/* Header tabella */}
-                  <div className={`grid grid-cols-[100px_1fr_90px_140px_1fr] gap-3 pb-2 border-b ${divider} text-xs font-bold uppercase tracking-wider ${mutedText}`}>
+                  {/* Header tabella — mobile: data corta, no nota */}
+                  <div className={`grid grid-cols-[70px_1fr_70px_24px] gap-2 pb-2 border-b ${divider} text-xs font-bold uppercase tracking-wider ${mutedText}`}>
                     <span>Data</span>
                     <span>Ingrediente</span>
                     <span className="text-right">Qtà</span>
-                    <span>Categoria</span>
-                    <span>Nota</span>
+                    <span></span>
                   </div>
                   {(showAll ? filtered : filtered.slice(0, 15)).map(r => {
                     const meta = categoryMeta[r.category];
                     const Icon = meta.icon;
+                    // Short date: "11 apr" without year
+                    const shortDate = new Date(r.recorded_at + 'T12:00:00').toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
                     return (
-                      <div key={r.id} className={`grid grid-cols-[100px_1fr_90px_140px_1fr] gap-3 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
-                        <span className={`text-xs ${mutedText} shrink-0`}>{formatDate(r.recorded_at)}</span>
+                      <div key={r.id} className={`grid grid-cols-[70px_1fr_70px_24px] gap-2 py-2 px-1 rounded-lg items-center ${rowHover} transition-colors`}>
+                        <span className={`text-xs ${mutedText} shrink-0`}>{shortDate}</span>
                         <span className={`text-sm font-medium truncate ${textColor}`}>{r.ingredient_name}</span>
                         <span className={`text-sm text-right shrink-0 font-mono ${textColor}`}>{r.qty}{r.unit}</span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <Icon className={`w-3.5 h-3.5 shrink-0 ${meta.color}`} />
-                          <span className={`text-xs ${mutedText}`}>{meta.label}</span>
-                        </div>
-                        <span className={`text-xs ${mutedText} truncate`}>{r.note ?? '—'}</span>
+                        <Icon className={`w-4 h-4 shrink-0 ${meta.color}`} title={meta.label} />
                       </div>
                     );
                   })}
@@ -598,7 +595,7 @@ export function ConsumiView({
                       <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
                       <XAxis dataKey="period" tick={{ fontSize: 11, fill: chartColors.tick }} />
                       <YAxis tick={{ fontSize: 11, fill: chartColors.tick }} allowDecimals={false} />
-                      <Tooltip contentStyle={chartColors.tooltip} />
+                      <Tooltip contentStyle={chartColors.tooltip} cursor={false} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar dataKey="waste"     name="Scarto"            stackId="a" fill="#EF4444" />
                       <Bar dataKey="personale" name="Pasto personale"   stackId="a" fill="#F59E0B" />
