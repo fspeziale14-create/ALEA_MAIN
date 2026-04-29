@@ -1072,7 +1072,7 @@ export function PianificazioneView(props: PianificazioneViewProps) {
                                                                     <span className={`font-semibold text-sm ${textColor}`}>{ing.name}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`text-sm font-mono ${isNegative ? 'text-amber-500' : pct < 20 ? 'text-red-500' : pct < 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{floor2(ing.currentQty)}{ing.unit} / {floor2(ing.idealQty)}{ing.unit}</span>
+                                                                    <span className={`text-sm font-mono ${isNegative ? 'text-amber-500' : pct < 20 ? 'text-red-500' : pct < 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{isPieceUnit(ing.unit) ? Math.floor(ing.currentQty) : floor2(ing.currentQty)}{ing.unit} / {floor2(ing.idealQty)}{ing.unit}</span>
                                                                     <button onClick={() => setIngredients(prev => prev.filter(i => i.id !== ing.id))} className="text-red-400 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                                                                 </div>
                                                             </div>
