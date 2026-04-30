@@ -1,3 +1,5 @@
+import React from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Users, Clock, Pencil, ChefHat, ConciergeBell
 } from 'lucide-react';
@@ -7,6 +9,15 @@ import { Label } from './components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card';
 import { Separator } from './components/ui/separator';
 import { weekDaysOrdered } from './constants';
+
+const _ps = { hidden: {}, show: { transition: { staggerChildren: 0.09, delayChildren: 0.04 } } };
+const _si = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.4, 0, 0.2, 1] as any } } };
+function PS({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <motion.div variants={_ps} initial="hidden" animate="show" className={className}>{children}</motion.div>;
+}
+function SI({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <motion.div variants={_si} className={className}>{children}</motion.div>;
+}
 
 interface ImpostazioniViewProps {
   isDinner: boolean;
@@ -43,12 +54,15 @@ export function ImpostazioniView(props: ImpostazioniViewProps) {
 
   return (
              <main className="flex-1 p-6 md:p-8 max-w-4xl mx-auto w-full">
-                <div className="space-y-8">
-                    <div>
-                        <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Impostazioni</h1>
-                        <p className={`${mutedText} mt-1`}>Configura i parametri operativi del ristorante.</p>
-                    </div>
+                <PS className="space-y-8">
+                    <SI>
+                        <div>
+                            <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Impostazioni</h1>
+                            <p className={`${mutedText} mt-1`}>Configura i parametri operativi del ristorante.</p>
+                        </div>
+                    </SI>
 
+                    <SI>
                     <Card className={cardBg}>
                         <CardHeader>
                             <CardTitle className={`flex items-center gap-2 ${textColor}`}><Users className={`w-5 h-5 ${accentColor}`} /> Rapporti Staff & Sala</CardTitle>
@@ -101,7 +115,9 @@ export function ImpostazioniView(props: ImpostazioniViewProps) {
                             </div>
                         </CardContent>
                     </Card>
+                    </SI>
 
+                    <SI>
                     <Card className={cardBg}>
                         <CardHeader className="flex flex-row justify-between items-start">
                             <div>
@@ -164,11 +180,14 @@ export function ImpostazioniView(props: ImpostazioniViewProps) {
                             )}
                         </CardContent>
                     </Card>
+                    </SI>
 
+                    <SI>
                     <Button onClick={() => setActiveView("Dashboard")} className={`w-full py-6 text-lg font-semibold shadow-sm bg-[#967D62] hover:bg-[#7A654E] ${isDinner ? 'text-[#F4F1EA]' : 'text-white'}`}>
                         Salva e Torna alla Dashboard
                     </Button>
-                </div>
+                    </SI>
+                </PS>
              </main>
   );
 }
