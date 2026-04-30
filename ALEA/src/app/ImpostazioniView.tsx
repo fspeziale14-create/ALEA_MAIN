@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useRef } from 'react';
+import { animate } from 'motion';
 import {
   Users, Clock, Pencil, ChefHat, ConciergeBell
 } from 'lucide-react';
@@ -11,15 +11,21 @@ import { Separator } from './components/ui/separator';
 import { weekDaysOrdered } from './constants';
 
 function SI({ children, className, i = 0 }: { children: React.ReactNode; className?: string; i?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    const t = setTimeout(() => {
+      animate(el, { opacity: 1, y: 0 }, { duration: 0.32, ease: [0.4, 0, 0.2, 1] });
+    }, i * 100);
+    return () => clearTimeout(t);
+  }, [i]);
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, delay: i * 0.1, ease: [0.4, 0, 0.2, 1] }}
-      className={className}
-    >
+    <div ref={ref} className={className}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
