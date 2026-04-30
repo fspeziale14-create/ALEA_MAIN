@@ -1,4 +1,21 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+
+const pageStaggerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.04 } },
+};
+const si = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.4, 0, 0.2, 1] as any } },
+};
+function PS({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <motion.div variants={pageStaggerVariants} initial="hidden" animate="show" className={className}>{children}</motion.div>;
+}
+function SI({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <motion.div variants={si} className={className}>{children}</motion.div>;
+}
+
 import {
   Activity, Cloud, CloudRain, Users, TrendingUp, Sun, Moon,
   CalendarCheck, CheckCircle2, ClipboardCheck, UsersRound, Zap,
@@ -113,8 +130,9 @@ export function DashboardView(props: DashboardViewProps) {
 
   if (activeView === 'Prenotazioni') return (
              <main className="flex-1 p-6 md:p-8 max-w-4xl mx-auto w-full">
-                <div className="space-y-8">
-                    <div className="flex flex-col gap-2 sm:gap-1">
+                <PS className="space-y-8">
+                <SI>
+                <div className="flex flex-col gap-2 sm:gap-1">
                         <div className="flex flex-wrap items-center gap-3">
                             <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight ${textColor}`}>Gestione Prenotazioni</h1>
                             <div className={`flex items-center px-3 py-1 rounded-full border ${isDinner ? 'bg-[#1E293B] border-[#334155]' : 'bg-white border-[#EAE5DA]'} shadow-sm`}>
@@ -123,8 +141,10 @@ export function DashboardView(props: DashboardViewProps) {
                             </div>
                         </div>
                         <p className={`${mutedText} text-sm sm:text-base`}>Turno di {shift} del {formattedDate}</p>
-                    </div>
+                </div>
+                </SI>
 
+                <SI>
                     <Card className={cardBg}>
                         <CardHeader><CardTitle className={`text-lg ${textColor}`}>Nuova Prenotazione (Manuale)</CardTitle></CardHeader>
                         <CardContent>
@@ -154,7 +174,9 @@ export function DashboardView(props: DashboardViewProps) {
                             {isTargetShiftClosed && (<p className="text-red-500 text-xs mt-3 font-semibold text-right">⚠️ Impossibile aggiungere: il turno per l'orario inserito è già chiuso.</p>)}
                         </CardContent>
                     </Card>
+                </SI>
 
+                <SI>
                     <Card className={cardBg}>
                         <CardHeader><CardTitle className={`text-lg ${textColor}`}>Lista Tavoli</CardTitle></CardHeader>
                         <CardContent>
@@ -186,19 +208,24 @@ export function DashboardView(props: DashboardViewProps) {
                             )}
                         </CardContent>
                     </Card>
-                </div>
+                </SI>
+                </PS>
              </main>
   );
 
   return (
              <main className={`flex-1 p-6 md:p-8 space-y-8 ${bgColor} transition-colors duration-500 max-w-7xl mx-auto w-full`}>
+                <PS className="space-y-8">
+                <SI>
                 <div className={`flex items-center justify-center py-2 px-4 rounded-lg border ${accentBg} ${accentColor}`}>
                      <div className="flex items-center gap-2">
                         <Zap className="w-4 h-4" />
                         <span className="text-sm font-medium tracking-wide">Smetti di indovinare. Inizia a prevedere con il forecasting proattivo.</span>
                      </div>
                 </div>
+                </SI>
 
+                <SI>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card className={`${cardBg} flex flex-col justify-center`}>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
@@ -271,7 +298,9 @@ export function DashboardView(props: DashboardViewProps) {
                         </CardContent>
                     </Card>
                 </div>
+                </SI>
 
+                <SI>
                 <div className="grid gap-8 md:grid-cols-12 lg:min-h-[520px]">
                     {/* CARD PREVISIONE — metà larghezza */}
                     <Card className={`md:col-span-6 flex flex-col justify-between relative overflow-hidden ${cardBg}`}>
@@ -409,7 +438,8 @@ export function DashboardView(props: DashboardViewProps) {
                         </Card>
                     </div>
                 </div>
-
+                </SI>
+                </PS>
 
              </main>
   );
