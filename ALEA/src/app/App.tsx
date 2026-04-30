@@ -2,6 +2,7 @@ import { prevediGiorno, prevediSettimana, calcolaAttendibilita, AttendibilitaRes
 import { convocazione, convocazioneSettimanale, convocazioneCuochi, convocazioneCuochiSettimanale } from './engine';
 import { MENU_CATEGORIES, MENU_PRICES, BEVERAGE_COURSES, weekDaysOrdered, mapDays } from './constants';
 import { useState, useEffect } from 'react';
+import React from 'react';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { Activity, Cloud, CloudRain, Users, TrendingUp, Sun, Moon, CalendarCheck, CheckCircle2, ClipboardCheck, UsersRound, Zap, CalendarDays, Clock, ChefHat, ConciergeBell, Plus, Trash2, AlertTriangle, PiggyBank, CalendarRange, Pencil, LayoutGrid, ArrowRightCircle, Utensils, Boxes, Loader2, Settings2, BookOpen, X, Check, XCircle, ChevronRight, Edit3, ChevronDown, ChevronUp, UserCog, CookingPot, ClipboardList, ArrowLeft, Star, History, BarChart2, Target, TrendingDown, ArrowUp, ArrowDown, Minus, Flame } from 'lucide-react';
 
@@ -20,6 +21,35 @@ import { PianificazioneView } from './PianificazioneView';
 import { ImpostazioniView } from './ImpostazioniView';
 import { Separator } from './components/ui/separator';
 import { AnimatePresence, motion } from 'motion/react';
+
+// ── ANIMAZIONI STAGGER ───────────────────────────────────────
+const pageStaggerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+const staggerItemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.4, 0, 0.2, 1] } },
+};
+function PageStagger({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <motion.div
+      variants={pageStaggerVariants}
+      initial="hidden"
+      animate="show"
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+function SI({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <motion.div variants={staggerItemVariants} className={className}>
+      {children}
+    </motion.div>
+  );
+}
 
 // ── SUPABASE ──────────────────────────────────────────────────
 const supabase = createClient(
@@ -2219,7 +2249,7 @@ function App() {
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.38, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto', overflowX: 'hidden' }}
             className="[&::-webkit-scrollbar]:hidden [scrollbar-width:none] flex flex-col"
           >
@@ -2255,6 +2285,8 @@ function App() {
 
           {/* ========== PIANIFICAZIONE ========== */}
           {activeView === "Pianificazione" && (
+            <PageStagger className="flex-1 flex flex-col min-h-0">
+            <SI className="flex-1 flex flex-col min-h-0">
             <PianificazioneView
               isDinner={isDinner} textColor={textColor} mutedText={mutedText}
               cardBg={cardBg} accentColor={accentColor} accentBg={accentBg}
@@ -2311,10 +2343,14 @@ function App() {
               menuPrices={menuPrices} setMenuPrices={setMenuPrices} saveMenuPrice={saveMenuPrice}
               supabase={supabase} isLoggedIn={isLoggedIn}
             />
+            </SI>
+            </PageStagger>
           )}
 
           {/* ========== DASHBOARD + PRENOTAZIONI ========== */}
           {(activeView === "Dashboard" || activeView === "Prenotazioni") && (
+            <PageStagger className="flex-1 flex flex-col min-h-0">
+            <SI className="flex-1 flex flex-col min-h-0">
             <DashboardView
               isDinner={isDinner} textColor={textColor} mutedText={mutedText}
               cardBg={cardBg} accentColor={accentColor} accentBg={accentBg} bgColor={bgColor}
@@ -2343,10 +2379,14 @@ function App() {
               maxCapacity={maxCapacity}
               setIsMenuModalOpen={setIsMenuModalOpen}
             />
+            </SI>
+            </PageStagger>
           )}
 
           {/* ========== IMPOSTAZIONI ========== */}
           {activeView === "Impostazioni" && (
+            <PageStagger className="flex-1 flex flex-col min-h-0">
+            <SI className="flex-1 flex flex-col min-h-0">
             <ImpostazioniView
               isDinner={isDinner} textColor={textColor} mutedText={mutedText}
               cardBg={cardBg} accentColor={accentColor}
@@ -2365,23 +2405,29 @@ function App() {
               updateDailyHour={updateDailyHour}
               setActiveView={setActiveView}
             />
+            </SI>
+            </PageStagger>
           )}
 
           {/* ========== RECENSIONI (PLACEHOLDER) ========== */}
           {activeView === "Recensioni" && (
+            <PageStagger className="flex-1 flex flex-col min-h-0">
             <main className="flex-1 p-6 md:p-8 max-w-6xl mx-auto w-full">
               <div className="space-y-6">
-                <div>
+                <SI>
                   <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Recensioni</h1>
                   <p className={`${mutedText} mt-1`}>Collega le recensioni agli ordini per capire cosa viene apprezzato o criticato — e agisci direttamente sul menu.</p>
-                </div>
+                </SI>
+                <SI>
                 <div className={`flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed ${isDinner ? 'border-[#334155] text-[#94A3B8]' : 'border-[#EAE5DA] text-[#8C8A85]'}`}>
                   <Star className="w-12 h-12 mb-4 opacity-30" />
                   <p className="text-lg font-semibold opacity-50">Coming Soon</p>
                   <p className="text-sm opacity-40 mt-1">La gestione recensioni sarà disponibile a breve.</p>
                 </div>
+                </SI>
               </div>
             </main>
+            </PageStagger>
           )}
 
           {/* ========== MENU ========== */}
@@ -2403,10 +2449,13 @@ function App() {
           >
           {menuSubView === 'landing' && (
             <main className="flex-1 flex flex-col p-6 md:p-8 max-w-6xl mx-auto w-full">
+              <PageStagger className="flex-1 flex flex-col">
+              <SI>
               <div>
                 <h1 className={`text-3xl font-bold tracking-tight ${textColor}`}>Menu</h1>
                 <p className={`${mutedText} mt-1`}>Gestisci magazzino, ricette e analisi della redditività.</p>
               </div>
+              </SI>
               <div className="flex-1 flex items-center">
                 <div className="w-full py-8 space-y-6">
                   {/* Helper per card uniforme */}
@@ -2426,6 +2475,7 @@ function App() {
                       <motion.button
                         key={card.key}
                         layoutId={`menu-card-${card.key}`}
+                        variants={staggerItemVariants}
                         onClick={() => handleMenuSubViewChange(card.key as any)}
                         whileHover={{ y: -4, boxShadow: '0 20px 40px rgba(0,0,0,0.12)' }}
                         whileTap={{ scale: 0.98 }}
@@ -2448,10 +2498,11 @@ function App() {
                     );
                     return rows;
                   }, []).map((row, i) => (
-                    <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-6">{row}</div>
+                    <PageStagger key={i} className="grid grid-cols-1 md:grid-cols-3 gap-6">{row}</PageStagger>
                   ))}
                 </div>
               </div>
+              </PageStagger>
             </main>
           )}
 
