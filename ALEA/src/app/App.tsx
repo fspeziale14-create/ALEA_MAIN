@@ -2228,7 +2228,7 @@ function App() {
           
           {/* ── ANIMATED VIEWS WRAPPER ─────────────────────────── */}
           <div style={{ position: 'relative', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          <AnimatePresence mode="sync" initial={false} custom={navDirection}>
+          <AnimatePresence mode="wait" initial={false} custom={navDirection}>
           <motion.div
             key={activeView}
             custom={navDirection}
@@ -2240,7 +2240,7 @@ function App() {
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto', overflowX: 'hidden' }}
             className="[&::-webkit-scrollbar]:hidden [scrollbar-width:none] flex flex-col"
           >
