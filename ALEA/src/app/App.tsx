@@ -2211,14 +2211,14 @@ function App() {
             key={activeView}
             custom={navDirection}
             variants={{
-              enter: (dir: number) => ({ opacity: 0, x: dir * 40 }),
-              center: { opacity: 1, x: 0 },
-              exit: (dir: number) => ({ opacity: 0, x: dir * -40 }),
+              enter: (dir: number) => ({ opacity: 1, y: dir * 60 }),
+              center: { opacity: 1, y: 0 },
+              exit: (dir: number) => ({ opacity: 1, y: dir * -60 }),
             }}
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
             className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
           >
 
@@ -2389,14 +2389,14 @@ function App() {
             key={menuSubView}
             custom={menuNavDirection}
             variants={{
-              enter: (dir: number) => ({ opacity: 0, x: dir * 24 }),
-              center: { opacity: 1, x: 0 },
-              exit: (dir: number) => ({ opacity: 0, x: dir * -24 }),
+              enter: (dir: number) => ({ opacity: 1, y: dir * 30 }),
+              center: { opacity: 1, y: 0 },
+              exit: (dir: number) => ({ opacity: 1, y: dir * -30 }),
             }}
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
             className="flex-1 flex flex-col min-h-0"
           >
           {menuSubView === 'landing' && (
