@@ -1,19 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
-import { animate } from 'motion';
+import { useState } from 'react';
 
 function SI({ children, className, i = 0 }: { children: React.ReactNode; className?: string; i?: number }) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refCb = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return;
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(20px)';
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      animate(el, { opacity: 1, y: 0 }, { duration: 0.32, ease: [0.4, 0, 0.2, 1] });
-    }, i * 100);
-  }, [i]);
   return (
-    <div ref={refCb} className={className}>
+    <div
+      className={`alea-si${className ? ' ' + className : ''}`}
+      style={{ animationDelay: `${i * 0.1}s` }}
+    >
       {children}
     </div>
   );
